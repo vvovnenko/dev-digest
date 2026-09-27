@@ -12,6 +12,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
 | [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
+| [frontend-ui-architecture](frontend-ui-architecture/SKILL.md) | Frontend | Where UI code lives: component placement and splitting, constants, helpers vs utils, business logic, state/data layer, Server/Client boundary (v1.2.0) |
 | [zod](zod/SKILL.md) | Full-stack | Zod schema validation, parsing, error handling, type inference |
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |

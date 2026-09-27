@@ -33,6 +33,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-23** — The machine's pnpm is 12.5.1 (`CLAUDE.md` only asks for ≥10), and it rejects the short `-s` flag with `error: unexpected argument '-s' found`: `pnpm -s typecheck` runs nothing → use `pnpm --silent <script>` or plain `pnpm <script>` in `server/` and `client/`. `npm run -s` in `reviewer-core/` and `e2e/` is fine. Evidence: `CLAUDE.md:22`.
   - **2026-09-23** — Narrower than it reads: only the shorthand `pnpm -s <script>` fails; `pnpm -s run <script>` works (`pnpm -s run typecheck` in `server/` exits 0), and no file in the repo uses `pnpm -s`. Evidence: `INSIGHTS.md:32`, `server/package.json:6`.
 - **2026-09-23** — A `path:line` that points *into* an `INSIGHTS.md` goes stale on the next append: the script splices lines in mid-file, so every later entry shifts. The `append-insight.mjs` entry's `client/INSIGHTS.md:46` is now a blank line, and a citation of root `:32` written in this session was one line off a minute later → cite the code (or quote the entry's text), never an INSIGHTS line. Evidence: `.claude/skills/engineering-insights/scripts/append-insight.mjs:149`, `client/INSIGHTS.md:46`.
+- **2026-09-27** — A skill's `evals/evals.json` inside the repo leaks the expected answers to eval subagents: in the frontend-ui-architecture round 3, 3 of 10 runs (a told-not-to-read baseline included) printed it through a repo-root `grep -rn` that didn't exclude `.claude/` → tell every eval executor to search with `grep --exclude-dir=.claude` / `rg -g '!.claude'`, or keep eval sets outside the repo, and discard tainted runs. Evidence: `.claude/skills/frontend-ui-architecture/README.md:222`
+  - **2026-09-27** — Line evidence moved and the fix landed: the warning is now `.claude/skills/frontend-ui-architecture/README.md:224`, and the executor prompt template that excludes `.claude/` from every search is at `.claude/skills/frontend-ui-architecture/README.md:238` — start eval executor prompts from it.
 
 ## Recurring errors & fixes
 
@@ -71,6 +73,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   table ⇒ $0.000247) → for real spend use `agent_runs.cost_usd`, not either
   table. Evidence: `docs/agent-prompts/choosing-a-model.md:33`,
   `server/src/adapters/llm/pricing.ts:31`.
+- **2026-09-27** — `react-best-practices` tells agents to style with Tailwind utilities and "no inline `style={}`", to put shared code in `utils/` or `components/ui/`, and to use `useApiQuery`/`useApiMutation` and Axios; none of that exists in `client/`, which uses `style={s.x}`, `src/lib/<purpose>.ts` and named TanStack hooks over `fetch` → for structure and placement follow `client/CLAUDE.md` and the `frontend-ui-architecture` skill, which lists these conflicts. Evidence: `.claude/skills/react-best-practices/SKILL.md:111,117,171`, `client/CLAUDE.md:27`
 
 ## Session notes
 
@@ -84,6 +87,9 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-23** — HW1 fixes, block E (path:line in every entry + script check): +3 (Open questions ×2 line evidence, Tool & library notes superseded)
 - **2026-09-23** — HW1 re-check against the 24 grading criteria: +1 (Tool & library notes)
 - **2026-09-23** — PR description + insights audit: +3 (Codebase patterns superseded, Tool & library notes ×2 incl. nuance)
+- **2026-09-27** — frontend-ui-architecture skill (research, SKILL.md, two eval rounds): +1 (Doc drift)
+- **2026-09-27** — frontend-ui-architecture 1.2.0 (round-3 evals): +1 (Tool & library notes)
+- **2026-09-27** — frontend-ui-architecture 1.2.0 final (softened deviations rule, eval exclude template): +1 (Tool & library notes, nuance)
 
 ## Open questions
 

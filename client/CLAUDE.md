@@ -67,6 +67,7 @@ pnpm test         # vitest + jsdom — no API needed (there is no lint script)
 - Write to `INSIGHTS.md` only through the `engineering-insights` skill — it
   appends and never edits existing entries.
 - Read [`specs/`](specs/README.md) before building a UI feature.
+- Use the `frontend-ui-architecture` skill before creating, moving or splitting a component, hook, helper or constants file.
 - Read [`docs/`](docs/README.md) before changing data fetching, the app shell or i18n.
 - Read [`docs/ui-architecture.md`](docs/ui-architecture.md) before moving a Server/Client
   Component boundary, adding a hook, or touching providers, i18n or styling.
