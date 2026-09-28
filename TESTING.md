@@ -42,6 +42,8 @@ surface (list, diff, findings, run controls) and the agent editor.
 repo-intel ranking & indexing, pricing, route smoke. The `typecheck` job also
 runs on Windows, which doubles as the `@ast-grep/napi` prebuilt gate (install
 fails there if the win32 prebuilt is missing).
+The same job runs `pnpm arch` + `pnpm arch:stale`: onion layer boundaries checked by
+dependency-cruiser (`.claude/skills/onion-architecture`).
 
 **server-integration** — the `*.it.test.ts` files. Each starts a real Postgres
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
@@ -67,6 +69,7 @@ cd reviewer-core && npm test
 cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'   # unit, no Docker
 cd server && pnpm exec vitest run .it.test                      # integration, needs Docker
 cd server && pnpm test                                          # both
+cd server && pnpm arch                                          # layer boundaries (dependency-cruiser)
 
 # browser e2e (needs the full stack + agent-browser CLI)
 ./scripts/dev.sh

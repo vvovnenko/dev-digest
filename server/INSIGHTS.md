@@ -11,6 +11,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 
 ## What works
 
+- **2026-09-28** — To check a server change against CI's node_modules layout without pushing: copy `package.json`, `pnpm-lock.yaml`, `.npmrc`, `tsconfig.json` and `src/` (plus `reviewer-core`'s `package*.json`, `tsconfig.json`, `src/` + `npm ci`) into a scratch dir and run `npx -y pnpm@10 install --frozen-lockfile --store-dir <scratch>/store` — pnpm 10 honours `node-linker=hoisted` (real `node_modules/p-queue` dir), installs in ~7 s, and `pnpm arch` + `arch:stale` there gave the same 64-entry baseline byte-for-byte as the local isolated install. Evidence: `.npmrc:1`, `../.github/workflows/server-unit.yml:48`
+
 ## What doesn't work
 
 - **2026-09-23** — The DB suite is not hermetic: "run all enabled agents reviews with each enabled agent" also starts the seeded agents, which use `openrouter`, while `appWith` overrides only the `openai` LLM, so the real `OpenRouterProvider` runs with the `OPENROUTER_API_KEY` that `dotenv` loads from `server/.env`. A preload that blocks `openrouter.ai` intercepted a real HTTPS request from that one test → every `pnpm test` makes small billed calls; override `llm.openrouter` (or `secrets`) in `appWith`. Evidence: `test/reviews.it.test.ts:495-504`, `test/reviews.it.test.ts:113-125`, `src/db/seed.ts:12`.
@@ -30,6 +32,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 
 - **2026-09-23** — `grep` treats `src/adapters/depgraph/index.ts` as binary (`file` reports it as `data`), so `grep -r` and `grep -I` silently skip it → search it with `grep -a` or the Grep tool. Evidence: `src/adapters/depgraph/index.ts:27`.
   - **2026-09-23** — Line evidence: the byte that makes it binary is a literal NUL inside the edge key at `src/adapters/depgraph/index.ts:93` (``const key = `${from}\0${to}` `` with a raw `\0`); `:27` is just `export interface DepGraph {`. Evidence: `src/adapters/depgraph/index.ts:93`.
+- **2026-09-27** — dependency-cruiser's `options.exclude.path` also matches *resolved* `node_modules` paths: an unanchored `dist/` silently dropped every import of `p-queue` and `simple-git` (their entry is `node_modules/<pkg>/dist/…`), so rules on them could never fire and no warning was printed → anchor excludes (`^dist/`, `^clones/`) and check the npm targets in `-T json` after changing them. Evidence: `.dependency-cruiser.cjs:245`
+- **2026-09-27** — The local pnpm 12.5.1 installs `server/node_modules` *isolated* (`node_modules/p-queue` → `.pnpm/p-queue@8.1.1/…`; `.modules.yaml` says `nodeLinker: isolated`) although `.npmrc` asks for `node-linker=hoisted`, which CI's pnpm 10 applies → any tool that records resolved package paths differs between a laptop and CI; dependency-cruiser needs `preserveSymlinks: true` so its baseline keys match. Evidence: `.npmrc:1`, `.dependency-cruiser.cjs:252`
 
 ## Recurring errors & fixes
 
@@ -64,6 +68,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-23** — HW1 fixes, block E (path:line in every entry): +1 (Recurring errors & fixes — line evidence)
 - **2026-09-23** — HW1 fixes, block F (docs/architecture.md, specs/review-flow.md): +6 (What doesn't work ×2, Doc drift ×2, Tool & library notes, Open questions nuance)
 - **2026-09-23** — PR description + insights audit: +1 (Tool & library notes — line evidence)
+- **2026-09-27** — onion-architecture skill + dependency-cruiser boundaries (`pnpm arch`): +2 (Tool & library notes)
+- **2026-09-28** — onion-architecture follow-up (CI-layout check, stale `package.json` citation): +1 (What works)
 
 ## Open questions
 

@@ -6,6 +6,7 @@
 #    macOS is covered by daily local dev, Windows is not a ship target, and
 #    `@ast-grep/napi` is exact-pinned so its native binary only changes on a
 #    deliberate version bump.
+#    It also runs `pnpm arch` + `pnpm arch:stale` (onion layer boundaries).
 #  - unit: the ~19 DB-free test files (everything that is NOT `*.it.test.ts`).
 #    LLM/git/embeddings are mocked via src/adapters/mocks.ts — no Docker.
 #
@@ -64,6 +65,14 @@ jobs:
         run: npm ci
 
       - run: pnpm typecheck
+
+      # Onion layer boundaries (.claude/skills/onion-architecture): dependency-cruiser
+      # over src + ../reviewer-core/src. Needs reviewer-core's deps (installed above) so
+      # `openai`/`zod` resolve. Known violations are frozen in
+      # .dependency-cruiser-known-violations.json: a new one fails `arch`; a fixed one
+      # still listed fails `arch:stale` — the baseline only shrinks.
+      - run: pnpm arch
+      - run: pnpm arch:stale
 
   unit:
     name: tests

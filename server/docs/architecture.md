@@ -91,7 +91,7 @@ One per app. Services receive the container and read adapters from it.
 
 - The registry is static: `settings, repos, pulls, polling, workspace, agents, reviews,
   repoIntel` (`src/modules/index.ts:24-33`); `:15-18` says why there is no autoload.
-  `@fastify/autoload` is still a dependency (`package.json:19`) that nothing imports.
+  `@fastify/autoload` is still a dependency (`package.json:22`) that nothing imports.
 - Each module is a plain async plugin registered with `await` (`src/app.ts:168-170`), so
   it is encapsulated and inherits `app.container` and the root error handler. Seven of
   the eight call `withTypeProvider<ZodTypeProvider>()` (e.g. `src/modules/reviews/routes.ts:20`).
@@ -158,3 +158,14 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
 3. A `ContainerOverrides` key, checked first in the getter, and a deterministic mock in
    `src/adapters/mocks.ts` that tests inject through `overrides`.
 4. Services use it only as `container.<name>`; they never import the class.
+5. `pnpm arch` must pass: an adapter imports no `src/modules/**`, `src/db/**` or Fastify
+   (rule `onion-adapters-outer-ring`).
+
+## Layers and import rules
+
+Where code goes and which way imports may point is the `onion-architecture` skill
+(`../../.claude/skills/onion-architecture/SKILL.md`): `domain.ts` ← `ports.ts` ←
+`service.ts` ← `routes.ts` / `repository.ts` / `src/adapters/`, wired only in the
+container. `pnpm arch` (dependency-cruiser, `.dependency-cruiser.cjs`) checks `src/` and
+`../reviewer-core/src/`. The 64 violations that existed on 2026-09-27 are frozen in
+`.dependency-cruiser-known-violations.json`; the file may only shrink (`pnpm arch:stale`).

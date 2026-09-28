@@ -25,6 +25,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   `client/src/vendor/ui/primitives/tokens.ts:3`.
 - **2026-09-23** — Every CLAUDE.md must stay under 100 lines (the user's rule; the repo doesn't state it, and `5a759d1` shortened the root from 102 to 94 for it). After HW1 block D the root is at 99 → put new rules in a package `CLAUDE.md` (all are under 85) or a linked doc; merging or shortening existing root lines needs the user's OK, and the structure (headings, block types) must stay. Evidence: `CLAUDE.md:62-66` (Naming conventions, the last 5 lines added).
   - **2026-09-23** — superseded: "all are under 85" no longer holds — `server/CLAUDE.md` grew to 86 lines in `faa6678` (packages are now 61–86, root still 99). Evidence: `server/CLAUDE.md:86`.
+  - **2026-09-28** — After `f3f0358` (onion-architecture pointers) `server/CLAUDE.md` is 92 lines and `reviewer-core/CLAUDE.md` 65; root still 99 → server has 7 lines of headroom left, so the next server rule should go in a linked doc or a skill. Evidence: `server/CLAUDE.md:92`, `reviewer-core/CLAUDE.md:65`.
 
 ## Tool & library notes
 
@@ -73,6 +74,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   table ⇒ $0.000247) → for real spend use `agent_runs.cost_usd`, not either
   table. Evidence: `docs/agent-prompts/choosing-a-model.md:33`,
   `server/src/adapters/llm/pricing.ts:31`.
+- **2026-09-27** — `server-unit.yml` says `server/package.json` is skip-worktree ("a local variant"), so committed scripts may be missing; `git ls-files -v server/package.json` prints `H` (tracked normally) → edit `server/package.json` scripts as usual — they are committed (the `arch*` scripts were added this way). Evidence: `.github/workflows/server-unit.yml:106`
 - **2026-09-27** — `react-best-practices` tells agents to style with Tailwind utilities and "no inline `style={}`", to put shared code in `utils/` or `components/ui/`, and to use `useApiQuery`/`useApiMutation` and Axios; none of that exists in `client/`, which uses `style={s.x}`, `src/lib/<purpose>.ts` and named TanStack hooks over `fetch` → for structure and placement follow `client/CLAUDE.md` and the `frontend-ui-architecture` skill, which lists these conflicts. Evidence: `.claude/skills/react-best-practices/SKILL.md:111,117,171`, `client/CLAUDE.md:27`
 
 ## Session notes
@@ -87,9 +89,11 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-23** — HW1 fixes, block E (path:line in every entry + script check): +3 (Open questions ×2 line evidence, Tool & library notes superseded)
 - **2026-09-23** — HW1 re-check against the 24 grading criteria: +1 (Tool & library notes)
 - **2026-09-23** — PR description + insights audit: +3 (Codebase patterns superseded, Tool & library notes ×2 incl. nuance)
+- **2026-09-27** — onion-architecture skill + dependency-cruiser boundaries (`pnpm arch`): +1 (Doc drift)
 - **2026-09-27** — frontend-ui-architecture skill (research, SKILL.md, two eval rounds): +1 (Doc drift)
 - **2026-09-27** — frontend-ui-architecture 1.2.0 (round-3 evals): +1 (Tool & library notes)
 - **2026-09-27** — frontend-ui-architecture 1.2.0 final (softened deviations rule, eval exclude template): +1 (Tool & library notes, nuance)
+- **2026-09-28** — onion-architecture follow-up (CI-layout check, stale `package.json` citation): +1 (Codebase patterns nuance)
 
 ## Open questions
 

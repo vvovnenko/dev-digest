@@ -11,12 +11,16 @@ client) and `zod` 3 · Vitest 2 · tsx.
 ```sh
 npm test           # vitest, hermetic — stubbed LLMProvider, no keys, no network
 npm run typecheck  # this IS the build: the package emits no JS
+cd ../server && pnpm arch  # import boundaries — also checks reviewer-core/src
 ```
 
 ## Conventions
 
 - Purity is the contract: no DB, filesystem or env access. The only I/O is an
   **injected** `LLMProvider`; anything else belongs in `server/`.
+- `server/`'s `pnpm arch` (dependency-cruiser, `onion-architecture` skill) enforces it:
+  no server `src/**` import but `@devdigest/shared`, no DB/fs/Fastify, and the `openai`
+  client only in `src/llm/openrouter.ts` (`openai/helpers/*` is fine).
 - Consumed as TypeScript source through `server/`'s tsconfig alias — never add a
   build step or a `dist/` import. Stray `src/**/*.js` / `*.d.ts` would shadow the
   sources (they are gitignored for that reason).
