@@ -31,6 +31,8 @@ import type {
   AuthWorkspace,
   SecretsProvider,
   SecretKey,
+  ListPullsOptions,
+  PrDiffStats,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 
@@ -56,11 +58,11 @@ export interface MockLLMOptions {
 }
 
 export class MockLLMProvider implements LLMProvider {
-  readonly id: 'openai' | 'anthropic';
+  readonly id: LLMProvider['id'];
   public calls: { method: string; req: unknown }[] = [];
 
   constructor(
-    id: 'openai' | 'anthropic' = 'openai',
+    id: LLMProvider['id'] = 'openai',
     private opts: MockLLMOptions = {},
   ) {
     this.id = id;
@@ -132,10 +134,33 @@ export class MockGitHubClient implements GitHubClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  /** Every `listPullRequests` options object and `getDiffStats` batch, in call order. */
+  public listCalls: ListPullsOptions[] = [];
+  public statsCalls: number[][] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
-  async listPullRequests(_repo: RepoRef): Promise<PrMeta[]> {
+  async listPullRequests(_repo: RepoRef, opts: ListPullsOptions = {}): Promise<PrMeta[]> {
+    this.listCalls.push(opts);
+    const all = this.allPulls();
+    // Like GitHub: most recently updated first, and down to `updatedSince` only.
+    const since = opts.updatedSince ? Date.parse(opts.updatedSince) : null;
+    return since === null ? all : all.filter((p) => p.updated_at && Date.parse(p.updated_at) >= since);
+  }
+
+  /** Stats as the fixtures carry them, or the default detail's for a PR with none. */
+  async getDiffStats(_repo: RepoRef, numbers: number[]): Promise<PrDiffStats[]> {
+    this.statsCalls.push(numbers);
+    const known = new Map(this.allPulls().map((p) => [p.number, p]));
+    return numbers.map((n) => {
+      const p = known.get(n);
+      return p && (p.additions || p.deletions || p.files_count)
+        ? { number: n, additions: p.additions, deletions: p.deletions, files_count: p.files_count }
+        : { number: n, additions: 247, deletions: 38, files_count: 9 };
+    });
+  }
+
+  private allPulls(): PrMeta[] {
     return (
       this.opts.pulls ?? [
         {
@@ -274,7 +299,10 @@ export class MockGitClient implements GitClient {
   }
   async currentHead(): Promise<string> {
     return this.syncedHead ?? this.opts.head ?? 'a1b2c3d4';
+  }  async defaultBranch(): Promise<string> {
+    return 'main';
   }
+
   async diffNameOnly(): Promise<string[]> {
     return this.opts.diffNameOnly ?? [];
   }
@@ -300,7 +328,7 @@ export class MockCodeIndex implements CodeIndex {
   async grep(_repo: RepoRef, pattern: string): Promise<CodeMatch[]> {
     return [{ path: 'src/config.ts', line: 12, text: `match for ${pattern}` }];
   }
-  async symbols(): Promise<CodeSymbol[]> {
+  async symbols(_repo?: RepoRef): Promise<CodeSymbol[]> {
     return [{ path: 'src/middleware/ratelimit.ts', name: 'rateLimit', kind: 'function', line: 25 }];
   }
   async references(_repo: RepoRef, symbol: string): Promise<CodeReference[]> {

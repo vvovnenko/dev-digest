@@ -151,12 +151,18 @@ Sources: B4, B15, B20, B21.
   base URL, headers, JSON handling and error shape.
 - **Hooks grouped by domain.** One file per resource area (`core`, `agents`, `reviews`,
   …) holds that area's queries and mutations. There is one place per query key.
-- **Keys.** Order them from generic to specific, starting with the resource name
-  (`["pr-runs", prId]`). Include every variable the `queryFn` uses, or the cache will serve
-  stale data for new inputs. A `queryOptions` factory is a valid alternative in projects
-  that use it. Don't mix both styles in one codebase.
+- **Keys.** Order them from generic to specific, starting with the resource name. Include
+  every variable the `queryFn` uses, or the cache will serve stale data for new inputs.
+  When several queries must be invalidated together, build their keys from one factory so
+  they share a prefix: DevDigest's `src/lib/hooks/keys.ts` gives every PR query
+  `["pr", prId, …]` (`prKeys.runs(prId)`), so `invalidateQueries({ queryKey:
+  prKeys.all(prId) })` refreshes the PR's detail, reviews, runs and comments. Resources
+  with a single query keep an inline key (`["settings"]`). A `queryOptions` factory is a
+  valid alternative in projects that use it; don't mix it with key factories.
 - **Invalidation belongs to the mutation hook** (`onSuccess: invalidateQueries …`), so
-  every caller gets it. Components don't reach into the query client.
+  every caller gets it. Components don't reach into the query client. An optimistic
+  update also lives there (`onMutate` sets the cache, `onError` restores it, `onSettled`
+  refetches): see `useFindingAction` in `src/lib/hooks/reviews.ts`.
 - **Where to reshape data:**
   - Prefer the backend.
   - Field renames or DTO → view-model mapping go in the fetcher or hook.

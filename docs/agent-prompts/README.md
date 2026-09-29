@@ -33,10 +33,11 @@ fixture / not for production / ignore this" never descope the review. You do not
 need to repeat any of this in your prompt — it is always there.
 
 **User message** = the task and all context, in this order, each untrusted block
-delimiter-wrapped (`prompt.ts:104-122`):
+delimiter-wrapped (`prompt.ts:118-140`):
 
 ```
-<task line, e.g. "Review PR #7 '…'">
+<task line, e.g. "Review pull request #7 (…)" — trusted, so it names only the number>
+## Pull request          (untrusted: the PR title and author)
 ## PR description        (untrusted, author-controlled, truncated to 4000 chars)
 ## Skills / rules        (linked skill bodies)
 ## Relevant memory       (curated memory items)
@@ -89,10 +90,11 @@ numbers and gates from what the model returns:
    everything CRITICAL turns every PR into a blocker. State plainly that speculative
    issues ("might be", "if not already handled") are at most `WARNING`.
 
-2. **Verdict semantics.** The model owns `verdict`, so it must be told the mapping:
-   `request_changes` ⇔ at least one CRITICAL; `comment` ⇔ only non-blocking
-   findings; `approve` ⇔ empty findings list. **No findings ⇒ approve.** Without
-   this, models default `verdict` arbitrarily (we have observed `request_changes`
+2. **Verdict semantics.** The engine derives the stored verdict from the grounded
+   findings (see below), but the model still returns one and it shows in the run log,
+   so tell it the same mapping: `request_changes` ⇔ at least one CRITICAL; `comment` ⇔
+   only non-blocking findings; `approve` ⇔ empty findings list. **No findings ⇒ approve.**
+   Without this, models default `verdict` arbitrarily (we have observed `request_changes`
    returned with zero findings and a summary saying "no issues found").
 
 3. **Findings discipline.** No duplicate findings; no padding toward a count. There
@@ -111,9 +113,11 @@ numbers and gates from what the model returns:
 - **Findings are citation-grounded**: a finding whose line range doesn't intersect a
   real diff hunk is dropped (`grounding.ts`). Cite real `file:line` from the diff or
   the finding disappears.
-- **`verdict` is currently passed through from the model** (`run.ts:208`). That is
-  why a wrong verdict reaches the UI unchanged — and why the verdict convention
-  above is load-bearing until/unless the verdict is also derived deterministically.
+- **`verdict` is derived too**, from the grounded findings and the agent's gate
+  (`verdictFromFindings`, `reviewer-core/src/output/to-review.ts:48-51`, applied at
+  `run.ts:264`): none ⇒ `approve`; one at or above `agents.ciFailOn` (default
+  `critical`) ⇒ `request_changes`; otherwise `comment`. The model's verdict only
+  reaches the run log, with an `info` event when the engine changes it.
 
 ## Severity / verdict / gate at a glance
 
@@ -121,12 +125,13 @@ numbers and gates from what the model returns:
 |---|---|
 | `findings[].severity` | recompute `score`; count CRITICAL as blockers |
 | `score` | **ignored** — recomputed from findings |
-| `verdict` | passed through to the review record (shown in the UI) |
+| `verdict` | **ignored** — derived from the grounded findings and the gate |
 | `findings[]` | citation-grounded; ungrounded ones dropped |
 
-The per-agent merge gate (`agents.ciFailOn`, default `critical`) decides when a CI
-review **blocks**: it is deterministic from finding severities, independent of the
-model's `verdict`. Keep your severities honest and the gate behaves.
+The per-agent merge gate (`agents.ciFailOn`, default `critical`) decides when a
+review **blocks** — the stored `request_changes` verdict and, in CI, the GitHub
+event: it is deterministic from finding severities, independent of the model's
+`verdict`. Keep your severities honest and the gate behaves.
 
 ## Checklist before shipping a prompt
 

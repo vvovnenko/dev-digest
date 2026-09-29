@@ -1,8 +1,10 @@
 # Before/after on real DevDigest code
 
-Each example names the rule it applies. Paths are relative to `client/src/`. The code
-comes from the repo as of skill version 1.0.0. These are illustrations, not tasks: don't
-apply them unless the current task is about that code.
+Each example names the rule it applies. Paths are relative to `client/src/`. The
+"before" code comes from the repo as of skill version 1.0.0. The wave-3 client refactor
+(skill 1.3.0) applied examples 1–3 and moved the routes into the `app/(shell)/` group;
+each of those examples ends with where the result lives now. They stay here as worked
+examples of the rules, not as tasks.
 
 ## Contents
 1. Logic inline in a page → route helpers + unit test
@@ -17,7 +19,7 @@ apply them unless the current task is about that code.
 *Rules: route files stay thin; business logic lives in pure functions; one definition
 per concept.*
 
-**Before.** In `app/repos/[repoId]/pulls/page.tsx`, the page body filters, searches,
+**Before.** In `app/repos/[repoId]/pulls/page.tsx` (1.0.0), the page body filters, searches,
 sorts and counts. A constant also sits in the page, although `constants.ts` and
 `helpers.ts` are right next to it:
 
@@ -111,6 +113,12 @@ describe("sortPulls", () => {
 These are helpers, not a hook, because nothing here calls React. They stay at route
 level because only this route uses them.
 
+**Applied.** `app/(shell)/repos/[repoId]/pulls/helpers.ts` now has `filterPulls`,
+`sortPulls` (typed `SortKey`), `parseSort` and `countPulls`, with
+`helpers.test.ts` beside it; `OPEN_STATUSES` is in `constants.ts`. The page became a thin
+server file and the screen `_components/PullsListView/`, which also keeps search and sort
+in the URL (`?q=`, `?sort=`).
+
 The sidebar badge (`components/app-shell/hooks/useShellContext.ts`) also counts
 needs-review PRs. That duplication already existed and lives outside this route, so the
 refactor mentions it in the answer and leaves the shell alone. Merging the two counts is a
@@ -123,7 +131,8 @@ name modules by purpose.*
 
 **Before.** The same function is copied into
 `app/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx`
-(route-local) and `components/diff-viewer/CommentCard/CommentCard.tsx` (shared):
+(route-local) and `components/diff-viewer/CommentCard/CommentCard.tsx` (shared), as of
+1.0.0:
 
 ```ts
 function formatWhen(iso: string): string {
@@ -148,6 +157,12 @@ export function formatDateTime(iso: string): string {
 Both files then `import { formatDateTime } from "@/lib/format-date"`. The PR list's
 `relativeTime` ("3h", "2d") is a different format with one consumer, so it stays in
 `pulls/helpers.ts`.
+
+**Applied, one step further.** The shared module became `lib/format.ts`: `useDateFormat`
+formats through next-intl's `useFormatter`, so dates use the app's locale and time zone
+on server and client alike instead of the browser's `toLocaleString()`. It calls a hook,
+so it is a hook; `DATE_TIME` and `TIME` are its option constants. `ReviewRunAccordion`,
+`CommentCard` and `RunHistory` use it.
 
 ## 3. One concept, two conflicting maps → reuse the design system's map, and ask about the value
 
@@ -197,13 +212,18 @@ const color = SEV[f.severity as keyof typeof SEV]?.c ?? "var(--text-muted)";
 - **Only when the design system has no such map** do you create one: in the shared
   module that owns the concept, typed `Record<Severity, …>`.
 
+**Applied.** `FindingCard.tsx` and `RunTraceDrawer/_components/FindingsSection/FindingsSection.tsx`
+read `SEV[…].c` with a `var(--text-muted)` fallback, and `FindingCard/constants.ts` is
+gone. The same change moved the line label to one owner, `lib/finding-location.ts`
+(`lineLabel`).
+
 ## 4. A new route-local component → where each part goes
 
 *Task shape: "add agent and status filter chips above the Review runs list on the PR
 page."*
 
 ```
-app/repos/[repoId]/pulls/[number]/_components/RunFilters/
+app/(shell)/repos/[repoId]/pulls/[number]/_components/RunFilters/
 ├── RunFilters.tsx       chips; receives options + selection + onChange as props
 ├── index.ts             export { RunFilters } from "./RunFilters"
 ├── constants.ts         RUN_STATUS_FILTERS = [{ key: "all", labelKey: "all" }, …] as const
@@ -217,7 +237,10 @@ app/repos/[repoId]/pulls/[number]/_components/RunFilters/
   endpoint call would be a hook in `lib/hooks/reviews.ts`.
 - **State.** The selection belongs to the lowest parent that renders both the chips and
   the list. If it must survive reload or be shareable, put it in the URL, as the PR list
-  does with `?status=`.
+  does with `?status=`, `?q=` and `?sort=`.
+- **Behaviour to keep.** Filtering re-renders the accordions; open state and the
+  shortcut target live in `FindingsTab`'s `useOpenRuns`, keyed by review id, so a filter
+  must not reset them or reopen runs (see `devdigest.md` → Behaviour on the PR page).
 - **Copy.** Labels go in `messages/en/prReview.json`, and `constants.ts` holds only the
   label keys.
 - **Styles.** `style={s.x}`, no Tailwind classes. Chips come from `@devdigest/ui`.
@@ -226,21 +249,31 @@ app/repos/[repoId]/pulls/[number]/_components/RunFilters/
 
 *Rule: put the client boundary as low as possible; page files only compose.*
 
-`app/agents/page.tsx`, as it is today:
+`app/(shell)/agents/page.tsx`, as it is today:
 
 ```tsx
+import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { AgentsListView } from "./_components/AgentsListView";
 
 /* Route: /agents (Agents list). Thin route entry — the view, its create modal,
    styles, constants, helpers and i18n are colocated under _components/AgentsListView. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("shell.titles");
+  return { title: t("agents") };
+}
+
 export default function AgentsPage() {
   return <AgentsListView />;
 }
 ```
 
-The page stays a Server Component. `"use client"` sits in `AgentsListView`, and the list
-filtering lives in `AgentsListView/helpers.ts` (`filterAgents`). New screens follow this
-shape rather than putting `"use client"` on `page.tsx` with the whole screen inline.
+The page stays a Server Component, so it can also export `generateMetadata` (the tab
+title). `"use client"` sits in `AgentsListView`, and the list filtering lives in
+`AgentsListView/helpers.ts` (`filterAgents`). Since wave 3 every route follows this shape
+(`HomeView`, `AgentEditorView`, `SettingsView`, `PullsListView`, `PrDetailView`,
+`AddRepoView`); new screens do too rather than putting `"use client"` on `page.tsx`
+with the whole screen inline.
 
 ## 6. A "hook" that calls no hooks → a helper
 

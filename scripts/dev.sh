@@ -41,7 +41,7 @@ command -v pnpm   >/dev/null || { echo "pnpm not found (npm i -g pnpm)"; exit 1;
 for dir in server client; do
   if [ ! -f "$dir/.env" ] && [ -f "$dir/.env.example" ]; then
     cp "$dir/.env.example" "$dir/.env"
-    warn "created $dir/.env from .env.example — add your API keys (OPENAI/ANTHROPIC/GITHUB_TOKEN) in server/.env"
+    warn "created $dir/.env from .env.example — add your keys in server/.env: OPENROUTER_API_KEY (the seeded agents run on OpenRouter), GITHUB_TOKEN; OPENAI/ANTHROPIC only for agents you switch to them"
   fi
 done
 
@@ -70,7 +70,8 @@ log "Postgres healthy"
 install_if_needed() {
   if [ ! -d "$1/node_modules" ]; then
     log "installing deps in $1"
-    (cd "$1" && pnpm install)
+    # --frozen-lockfile: install exactly what the lockfile pins, never rewrite it.
+    (cd "$1" && pnpm install --frozen-lockfile)
   fi
 }
 install_if_needed server
@@ -95,9 +96,19 @@ fi
 
 # --- dev servers -------------------------------------------------------------
 SERVER_PID=""
+# Recursively kill a process and all its descendants: `pnpm dev` runs `tsx watch`,
+# which runs the API as a grandchild, so a plain `kill $SERVER_PID` left the API
+# holding :3001 after Ctrl-C. Walk the tree leaves-first.
+kill_tree() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  local kid
+  for kid in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$kid"; done
+  kill "$pid" 2>/dev/null || true
+}
 cleanup() {
   log "shutting down dev servers (Postgres stays up; stop it with: docker compose down)"
-  [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
+  kill_tree "$SERVER_PID"
 }
 trap cleanup EXIT INT TERM
 

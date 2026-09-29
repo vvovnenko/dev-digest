@@ -4,8 +4,10 @@
    and are re-exported alongside these from hooks/index.ts. */
 "use client";
 
+import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { prKeys, repoKeys } from "./keys";
 import type {
   Settings,
   SettingsUpdate,
@@ -47,8 +49,8 @@ export function useTestConnection() {
     // refresh the "Configured / Not set" key-status badges.
     onSuccess: (res) => {
       if (res.ok) {
-        qc.invalidateQueries({ queryKey: ["provider-models"] });
-        qc.invalidateQueries({ queryKey: ["secrets-status"] });
+        void qc.invalidateQueries({ queryKey: ["provider-models"] });
+        void qc.invalidateQueries({ queryKey: ["secrets-status"] });
       }
     },
   });
@@ -84,8 +86,8 @@ export function useRefreshRepo() {
   return useMutation({
     mutationFn: (repoId: string) => api.post<Repo>(`/repos/${repoId}/refresh`),
     onSuccess: (_d, repoId) => {
-      qc.invalidateQueries({ queryKey: ["repos"] });
-      qc.invalidateQueries({ queryKey: ["pulls", repoId] });
+      void qc.invalidateQueries({ queryKey: ["repos"] });
+      void qc.invalidateQueries({ queryKey: repoKeys.pulls(repoId) });
     },
   });
 }
@@ -98,24 +100,67 @@ export function useDeleteRepo() {
   });
 }
 
-// ---- Pull requests (F1: GET /repos/:id/pulls, GET /pulls/:id) ----
-export function usePulls(repoId: string | null | undefined) {
+// ---- Pull requests (F1: GET /repos/:id/pulls, POST /repos/:id/poll, GET /pulls/:id) ----
+/** How often a polling PR list re-reads the stored PRs. */
+const PULLS_POLL_MS = 60_000;
+
+/**
+ * A repo's PRs as the server stores them. The GET only reads (importing from
+ * GitHub is `useSyncPulls`), so screens that show PR statuses poll it
+ * (`poll: true`); every observer still refetches on window focus.
+ */
+export function usePulls(repoId: string | null | undefined, { poll = false }: { poll?: boolean } = {}) {
   return useQuery({
-    queryKey: ["pulls", repoId],
+    queryKey: repoKeys.pulls(repoId ?? ""),
     queryFn: () => api.get<PrMeta[]>(`/repos/${repoId}/pulls`),
     enabled: !!repoId,
-    // Auto-refresh PR statuses: re-sync from GitHub every 60s while the page is
-    // open, and whenever the window regains focus.
-    refetchInterval: 60_000,
+    refetchInterval: poll ? PULLS_POLL_MS : false,
     refetchOnWindowFocus: true,
   });
 }
 
-export function usePullDetail(prId: string | number | null | undefined) {
+/**
+ * Import a repo's PRs from GitHub (`POST /repos/:id/poll`), then re-read the list.
+ * `silent` skips the global error toast: for automatic syncs, where a missing
+ * GitHub token is expected rather than news.
+ */
+export function useSyncPulls({ silent = false }: { silent?: boolean } = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (repoId: string) => api.post<{ synced: number }>(`/repos/${repoId}/poll`),
+    meta: { silent },
+    onSuccess: (_d, repoId) => {
+      void qc.invalidateQueries({ queryKey: repoKeys.pulls(repoId) });
+      void qc.invalidateQueries({ queryKey: ["repos"] });
+    },
+  });
+}
+
+/**
+ * Silently import a repo's PRs once, the first time `enabled` holds for that
+ * repo: the PR list when it opens, a PR page whose number isn't stored yet.
+ * Only with a GitHub token configured — without one the poll can only fail —
+ * and it runs as soon as a saved token turns the status on.
+ */
+export function useAutoSyncPulls(repoId: string | null | undefined, enabled = true) {
+  const { data: secrets } = useSecretsStatus();
+  const sync = useSyncPulls({ silent: true });
+  const { mutate } = sync;
+  const synced = React.useRef<string | null>(null);
+  const hasToken = secrets?.github === true;
+  React.useEffect(() => {
+    if (!repoId || !enabled || !hasToken || synced.current === repoId) return;
+    synced.current = repoId;
+    mutate(repoId);
+  }, [repoId, enabled, hasToken, mutate]);
+  return sync;
+}
+
+export function usePullDetail(prId: string | null | undefined) {
   return useQuery({
-    queryKey: ["pull", prId],
+    queryKey: prKeys.detail(prId ?? ""),
     queryFn: () => api.get<PrDetail>(`/pulls/${prId}`),
-    enabled: prId != null,
+    enabled: !!prId,
   });
 }
 

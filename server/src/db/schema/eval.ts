@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision, numeric } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
 
@@ -31,7 +31,7 @@ export const evalRuns = pgTable('eval_runs', {
   precision: doublePrecision('precision'),
   citationAccuracy: doublePrecision('citation_accuracy'),
   durationMs: integer('duration_ms'),
-  costUsd: doublePrecision('cost_usd'),
+  costUsd: numeric('cost_usd', { mode: 'number' }), // exact money; a number in JS
 });
 
 export const conformanceChecks = pgTable('conformance_checks', {

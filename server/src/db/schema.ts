@@ -2,8 +2,9 @@
  * Canonical Drizzle schema — EVERY table in the schema.
  *
  * Tenancy rule: every domain table carries `workspace_id` (FK→workspaces)
- * and, where relevant, `created_by` (FK→users). All queries scope by
- * workspace_id via the base-repository guard.
+ * and, where relevant, `created_by` (FK→users). There is no base-repository
+ * guard: each repository method scopes its own query by workspace_id, or takes
+ * an id it got from one that did.
  *
  * This is the COMPLETE schema. Feature agents A1–A6 do NOT run parallel
  * migrations against these tables — they only extend with their own new

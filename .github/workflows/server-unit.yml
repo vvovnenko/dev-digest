@@ -6,8 +6,9 @@
 #    macOS is covered by daily local dev, Windows is not a ship target, and
 #    `@ast-grep/napi` is exact-pinned so its native binary only changes on a
 #    deliberate version bump.
-#    It also runs `pnpm arch` + `pnpm arch:stale` (onion layer boundaries).
-#  - unit: the ~19 DB-free test files (everything that is NOT `*.it.test.ts`).
+#    `pnpm typecheck` covers src AND test/ (tsconfig.test.json). It also runs
+#    `pnpm arch` + `pnpm arch:stale` (onion layer boundaries) and `pnpm lint`.
+#  - unit: the `unit` Vitest project — every test file except `*.it.test.ts`.
 #    LLM/git/embeddings are mocked via src/adapters/mocks.ts — no Docker.
 #
 # DB-backed tests run in server-integration.yml. reviewer-core/** is in the
@@ -37,17 +38,18 @@ concurrency:
 jobs:
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -74,20 +76,25 @@ jobs:
       - run: pnpm arch
       - run: pnpm arch:stale
 
+      # Type-aware lint (typescript-eslint, eslint.config.mjs): floating promises,
+      # misused promises, non-exhaustive switches. Warn-only for now.
+      - run: pnpm lint
+
   unit:
     name: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -102,7 +109,6 @@ jobs:
         working-directory: reviewer-core
         run: npm ci
 
-      # Inlined rather than `pnpm test:unit`: server/package.json is
-      # skip-worktree (a local variant), so the committed package.json may
-      # not carry the split scripts. Run vitest directly.
-      - run: pnpm exec vitest run --exclude '**/*.it.test.ts'
+      # The `unit` project of vitest.workspace.ts (default timeouts, so a hung
+      # test fails fast instead of eating the job).
+      - run: pnpm test:unit

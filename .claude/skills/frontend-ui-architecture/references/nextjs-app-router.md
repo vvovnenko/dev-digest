@@ -78,8 +78,9 @@ Sources: A2, A3, A20.
 - **Put the boundary as low as possible.** Mark the interactive leaf (a filter bar, a
   button group), not the page, so static content stays on the server.
 - **Thin server page, client view.** When the whole screen is interactive, the page can
-  stay a server file that renders one client view. DevDigest does this in
-  `src/app/agents/page.tsx` → `AgentsListView`.
+  stay a server file that renders one client view. DevDigest does this on every route,
+  e.g. `src/app/(shell)/agents/page.tsx` → `AgentsListView`; the server page also
+  exports `generateMetadata` for the tab title.
 - **Crossing the boundary:**
   - Code crosses through imports; data crosses through props.
   - Props must be serializable.

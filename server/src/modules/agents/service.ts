@@ -1,15 +1,16 @@
-import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentCreate,
   AgentSkillLink,
+  AgentUpdate,
   AgentVersion,
-  CiFailOn,
   ModelInfo,
   Provider,
-  ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
+import { NotFoundError } from '../../platform/errors.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { withSkillAt } from './domain.js';
+import type { AgentDeps } from './ports.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -22,56 +23,30 @@ import { toAgentDto, toAgentVersionDto } from './helpers.js';
 // Re-exported for backwards compatibility; implementation lives in ./helpers.
 export { toAgentDto } from './helpers.js';
 
-export interface CreateAgentInput {
-  name: string;
-  description?: string;
-  provider: Provider;
-  model: string;
-  system_prompt: string;
-  output_schema?: unknown;
-  strategy?: ReviewStrategy;
-  ci_fail_on?: CiFailOn;
-  repo_intel?: boolean;
-  enabled?: boolean;
-}
-
-export interface UpdateAgentInput {
-  name?: string;
-  description?: string;
-  provider?: Provider;
-  model?: string;
-  system_prompt?: string;
-  output_schema?: unknown;
-  strategy?: ReviewStrategy;
-  ci_fail_on?: CiFailOn;
-  repo_intel?: boolean;
-  enabled?: boolean;
-}
+/** The request bodies, as the API contract defines them. */
+export type CreateAgentInput = AgentCreate;
+export type UpdateAgentInput = AgentUpdate;
 
 export class AgentsService {
-  private repo: AgentsRepository;
-
-  constructor(private container: Container) {
-    this.repo = new AgentsRepository(container.db);
-  }
+  constructor(private deps: AgentDeps) {}
 
   async list(workspaceId: string): Promise<Agent[]> {
-    const rows = await this.repo.list(workspaceId);
+    const rows = await this.deps.agents.list(workspaceId);
     return rows.map(toAgentDto);
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
-    const row = await this.repo.getById(workspaceId, id);
+    const row = await this.deps.agents.getById(workspaceId, id);
     return row ? toAgentDto(row) : undefined;
   }
 
   /** Delete an agent (and its versions/skill-links, via cascade). */
   async delete(workspaceId: string, id: string): Promise<boolean> {
-    return this.repo.deleteById(workspaceId, id);
+    return this.deps.agents.deleteById(workspaceId, id);
   }
 
   async create(workspaceId: string, input: CreateAgentInput, userId?: string): Promise<Agent> {
-    const row = await this.repo.insert({
+    const row = await this.deps.agents.insert({
       workspaceId,
       name: input.name,
       description: input.description,
@@ -93,7 +68,7 @@ export class AgentsService {
     id: string,
     patch: UpdateAgentInput,
   ): Promise<Agent | undefined> {
-    const row = await this.repo.update(workspaceId, id, {
+    const row = await this.deps.agents.update(workspaceId, id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.provider !== undefined ? { provider: patch.provider } : {}),
@@ -114,9 +89,9 @@ export class AgentsService {
    * so version snapshots can't be read across tenants.
    */
   async listVersions(workspaceId: string, agentId: string): Promise<AgentVersion[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
+    const agent = await this.deps.agents.getById(workspaceId, agentId);
     if (!agent) return undefined;
-    const rows = await this.repo.listVersions(agentId);
+    const rows = await this.deps.agents.listVersions(agentId);
     return rows.map(toAgentVersionDto);
   }
 
@@ -129,16 +104,23 @@ export class AgentsService {
     agentId: string,
     version: number,
   ): Promise<AgentVersion | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
+    const agent = await this.deps.agents.getById(workspaceId, agentId);
     if (!agent) return undefined;
-    const row = await this.repo.getVersion(agentId, version);
+    const row = await this.deps.agents.getVersion(agentId, version);
     return row ? toAgentVersionDto(row) : undefined;
   }
 
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
-    const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    const links = await this.deps.agents.skillLinks(agentId);
+    return links.map((l) => ({ agent_id: agentId, skill_id: l.skillId, order: l.order }));
+  }
+
+  /** Linking a skill from another workspace (or a made-up id) is a 404, not a DB error. */
+  private async assertSkillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<void> {
+    const wanted = [...new Set(skillIds)];
+    const found = await this.deps.agents.skillsInWorkspace(workspaceId, wanted);
+    if (found.length !== wanted.length) throw new NotFoundError('Skill not found');
   }
 
   /**
@@ -150,9 +132,9 @@ export class AgentsService {
     agentId: string,
     skillIds: string[],
   ): Promise<AgentSkillLink[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    await this.repo.setSkills(agentId, skillIds);
+    await this.assertSkillsInWorkspace(workspaceId, skillIds);
+    const found = await this.deps.agents.replaceSkills(workspaceId, agentId, () => skillIds);
+    if (!found) return undefined;
     return this.skillLinks(agentId);
   }
 
@@ -163,11 +145,9 @@ export class AgentsService {
     skillId: string,
     order?: number,
   ): Promise<AgentSkillLink[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    const existing = await this.repo.linkedSkills(agentId);
-    const resolvedOrder = order ?? existing.length;
-    await this.repo.linkSkill(agentId, skillId, resolvedOrder);
+    await this.assertSkillsInWorkspace(workspaceId, [skillId]);
+    const found = await this.deps.agents.replaceSkills(workspaceId, agentId, (ids) => withSkillAt(ids, skillId, order));
+    if (!found) return undefined;
     return this.skillLinks(agentId);
   }
 
@@ -177,7 +157,7 @@ export class AgentsService {
    */
   async listModels(provider: Provider): Promise<ModelInfo[]> {
     try {
-      const llm = await this.container.llm(provider);
+      const llm = await this.deps.llm(provider);
       return await llm.listModels();
     } catch {
       return [];

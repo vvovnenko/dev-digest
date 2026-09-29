@@ -10,10 +10,11 @@ import { taskLine } from '../src/modules/reviews/helpers.js';
 describe('taskLine', () => {
   const pull = { number: 3, title: 'test: vulnerable fixture', author: 'burnjohn' } as never;
 
-  it('names the PR being reviewed', () => {
+  it('names the PR by number only — title and author are untrusted and go in a wrapped block', () => {
     const line = taskLine(pull);
     expect(line).toContain('#3');
-    expect(line).toContain('test: vulnerable fixture');
+    expect(line).not.toContain('test: vulnerable fixture');
+    expect(line).not.toContain('burnjohn');
   });
 
   it('keeps the non-negotiable "never withhold security" rule', () => {

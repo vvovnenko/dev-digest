@@ -95,6 +95,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           return (
             <div
               key={t.id}
+              // An error interrupts (alert); the rest wait in the polite region.
+              role={t.kind === "error" ? "alert" : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",

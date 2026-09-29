@@ -2,7 +2,7 @@
 name: onion-architecture
 description: Decides which onion ring server-side code belongs to and which way its imports may point in DevDigest's server/ (Fastify + Drizzle + Zod) and reviewer-core/ — pure domain.ts ← ports.ts ← service.ts ← routes.ts, repository.ts and src/adapters, wired only in the composition root and enforced by `pnpm arch` (dependency-cruiser with a shrink-only baseline). Use whenever creating, splitting or reviewing a server module, service, repository, route, port, adapter or domain rule; moving logic between routes, services and repositories; adding a transaction or an external call; writing a service test with fakes; or when `pnpm arch` fails — even if the request only says "add an endpoint", "extract this query" or "where should this go". Structure and dependency direction only; Fastify mechanics belong to fastify-best-practices, query and transaction syntax to drizzle-orm-patterns, schema idioms to zod, physical table design to postgresql-table-design.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Onion architecture (backend)
@@ -49,17 +49,16 @@ src/modules/<name>/
 
 Files appear only when they earn their place: a pure CRUD module may have no `domain.ts`.
 
-**Wiring.** `platform/container.ts` builds repositories and adapters with lazy getters,
-like the existing `agentsRepo` getter. The module's `routes.ts` plugin builds its service
-once from explicit ports, for example
-`new PullsService({ pulls: app.container.pullsRepo, github: () => app.container.github(), log: app.log })`.
-`app.log` already satisfies the structural `Logger` type (`src/modules/reviews/run-executor.ts:21`).
+**Wiring.** `platform/container.ts` builds repositories and adapters with lazy getters;
+each `routes.ts` plugin builds its service once from explicit ports, e.g.
+`new PullsService({ pulls: container.pullsRepo, github: () => container.github(), log: app.log })`
+(`pulls/routes.ts:25-29`; `app.log` satisfies the `Logger` port). Knowledge only the root
+has is adapted there: `container.repoIndexing` (`src/platform/container.ts:157-167`).
 
-**Legacy.** 64 known violations are frozen in `server/.dependency-cruiser-known-violations.json`:
-SQL in four route files, services that take the whole `Container` and build their own
-repositories, `db/rows` imports in services, adapters importing `repo-intel`. Don't copy
-them. The list, with `path:line` and what to do when you touch each one:
-[references/devdigest.md](references/devdigest.md).
+**Legacy.** 25 known violations are frozen in `server/.dependency-cruiser-known-violations.json`,
+all in `modules/repo-intel/` (do-not-touch): its service and pipeline take the `Container`,
+use concrete adapters and `node:fs`, and form a cycle with the container. Don't copy them.
+The list, with `path:line`: [references/devdigest.md](references/devdigest.md).
 
 ## Principles
 
@@ -112,8 +111,9 @@ Onion check — <feature>
   it differs (a value the API doesn't expose, a narrower union).
 - Throw `AppError` subclasses from `platform/errors.ts` for broken invariants; the HTTP
   status stays in the error class, not in domain code.
-- Candidate from legacy code: the version-bump rule in `agents/repository.ts:112-146`
-  (`isConfigChange` → next version) is domain logic living in a repository.
+- In this repo: `modules/agents/domain.ts` (versioning rules the repository applies inside
+  its transaction), `modules/pulls/domain.ts` (review status, PR-list mapping) and
+  `modules/reviews/domain.ts` (the stored records a run works with).
 
 Examples: [references/layers-and-ports.md](references/layers-and-ports.md).
 
@@ -141,22 +141,25 @@ Examples: [references/layers-and-ports.md](references/layers-and-ports.md).
 ## Routes (`routes.ts`)
 
 - `withTypeProvider<ZodTypeProvider>()`, a schema from `@devdigest/shared`,
-  `getContext(app.container, req)`, one service call, then the status. `repos/routes.ts`
-  is the model to copy; `pulls/routes.ts` is the one not to.
+  `getContext(app.container, req)`, one service call, then the status. `pulls/routes.ts`,
+  `repos/routes.ts` and `settings/routes.ts` are models to copy; `repo-intel/routes.ts`
+  (calls `container.jobs` and `container.repoIntel` itself) is the one not to.
 - No SQL, no adapters, no business `if`s, no hand-parsing of `req.body`.
-- Errors are `AppError` subclasses mapped once in `app.ts:116-164`. Fastify mechanics:
+- Errors are `AppError` subclasses mapped once in `app.ts:207-258`. Fastify mechanics:
   `fastify-best-practices`. Details: [references/fastify-edge.md](references/fastify-edge.md).
 
 ## Persistence and transactions (`repository.ts`)
 
 - The repository `implements` its port, scopes every query by `workspaceId`, and returns
   domain or contract types. Drizzle rows stay inside.
-- Multi-write use cases must be atomic, and today nothing is. One repository method = one
-  consistency boundary (`db.transaction`); `update(id, fn)` when a decision needs the
-  current row; a unit-of-work port when a use case spans repositories (T7, T9, T10).
+- Multi-write use cases must be atomic (`reviews/repository/run.repo.ts`,
+  `agents/repository.ts` show how). One repository method = one consistency boundary
+  (`db.transaction`); `update(id, fn)` when a decision needs the current row; a
+  unit-of-work port when a use case spans repositories (T7, T9, T10).
 - Never call an LLM, GitHub, git or the SSE bus inside a transaction: fetch first, write
   in one short transaction, emit after commit.
-- Drizzle's site now documents v1; this repo is on 0.38 (T8). Patterns and code:
+- Drizzle's site now documents v1; this repo is on 0.45 (T8), which wraps driver errors in
+  `DrizzleQueryError` (read Postgres codes from `err.cause`). Patterns and code:
   [references/persistence-and-transactions.md](references/persistence-and-transactions.md).
 
 ## Adapters (`src/adapters/<tech>/`)
@@ -175,7 +178,8 @@ Examples: [references/layers-and-ports.md](references/layers-and-ports.md).
 - `src/llm/openrouter.ts` is its one adapter; only it may import the `openai` client.
   `src/llm/structured.ts` may use `openai/helpers/zod`, which is a schema helper.
 - `server/` imports it only as `@devdigest/reviewer-core`, and only the container builds
-  `OpenRouterProvider`.
+  `OpenRouterProvider`, from the `@devdigest/reviewer-core/llm/openrouter.js` subpath: the
+  package index does not export it (`onion-core-provider-in-root-only`).
 
 ## Testing by ring
 
@@ -199,6 +203,9 @@ overwrites (`test/repo-intel-resync.test.ts:30-51`). Details:
   or introducing a port; the rule's `comment` says which.
 - Paid down a known violation? `pnpm arch:baseline`, then
   `node .claude/skills/onion-architecture/scripts/baseline-diff.mjs` must report `added 0`.
+- `app.container.db` is a property, not an import, so `pnpm arch` can't see a route that
+  queries or drives an adapter through it; `test/routes-container-ratchet.test.ts` counts
+  `container.db` and `container.<member>.<method>(` per routes file, and the counts only go down.
 - Never regenerate the baseline to hide a new violation, never loosen a rule to get green,
   and never rename a rule without regenerating the baseline and the user's OK.
 
@@ -209,9 +216,9 @@ Rule table, options and blind spots: [references/enforcement.md](references/enfo
 - **New files** follow every rule here.
 - **Files you touch** gain no new violating import (CI enforces it). Fix an existing
   violation in the same file when it is cheap and local; otherwise list it and ask.
-- **Adding more of a frozen pattern is still new debt.** Another Drizzle call in
-  `pulls/routes.ts` passes `pnpm arch` (the pair is already baselined) but breaks this
-  skill: put new queries behind a port.
+- **Adding more of a frozen pattern is still new debt.** Another adapter call in a
+  repo-intel pipeline file passes `pnpm arch` (the pair is already baselined) but breaks
+  this skill: put new I/O behind a port.
 - Leave `src/modules/repo-intel/` internals and untouched modules alone
   (`server/CLAUDE.md` → Do not touch). A bulk refactor is a separate task.
 - Docs that cite moved code (`server/docs/architecture.md`, specs) change in the same
@@ -228,7 +235,8 @@ Rule table, options and blind spots: [references/enforcement.md](references/enfo
 - [ ] Multi-write use cases are atomic; no external call inside a transaction.
 - [ ] Adapters import neither `src/modules/**` nor `src/db/**`.
 - [ ] Service tests use fakes of ports; repositories have `*.it.test.ts`.
-- [ ] `pnpm arch` and `pnpm arch:stale` pass; `baseline-diff.mjs` reports `added 0`.
+- [ ] `pnpm arch`, `pnpm arch:stale` and the routes ratchet test pass; `baseline-diff.mjs`
+  reports `added 0`.
 - [ ] No new instance of a baselined pattern in a touched legacy file.
 
 ## Reference files

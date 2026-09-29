@@ -67,6 +67,19 @@ export interface StructuredRequest<T> {
    * the `session_id` body field; ignored by providers that don't support it.
    */
   sessionId?: string;
+  /** Aborts the call (e.g. the run was cancelled); providers pass it to their SDK. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Tokens and cost already billed. A provider that fails after spending tokens
+ * (schema retries exhausted, output cut off, a later chunk erroring) throws an
+ * error carrying this as `usage`, so the caller can still record what it cost.
+ */
+export interface LLMUsage {
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number | null;
 }
 
 export interface StructuredResult<T> {
@@ -140,8 +153,28 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** `listPullRequests` options. */
+export interface ListPullsOptions {
+  /** ISO time: read pages only down to PRs updated before it. Unset reads every page. */
+  updatedSince?: string | undefined;
+}
+
+/** A PR's diff size, as the PR list shows it. */
+export interface PrDiffStats {
+  number: number;
+  additions: number;
+  deletions: number;
+  files_count: number;
+}
+
 export interface GitHubClient {
-  listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
+  /**
+   * A repo's PRs in every state, most recently updated first: every page, or with
+   * `updatedSince` only the pages down to it (the incremental poll).
+   */
+  listPullRequests(repo: RepoRef, opts?: ListPullsOptions): Promise<PrMeta[]>;
+  /** Diff stats for these PR numbers, batched; a PR GitHub doesn't return is left out. */
+  getDiffStats(repo: RepoRef, numbers: number[]): Promise<PrDiffStats[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
   postReview(repo: RepoRef, n: number, review: GitHubReviewPayload): Promise<{ id: string }>;
   /** List inline review comments on a PR (for the "Files changed" tab). */
@@ -213,6 +246,11 @@ export interface GitClient {
    */
   sync(repo: RepoRef, branch: string): Promise<{ head: string }>;
   currentHead(repo: RepoRef): Promise<string>;
+  /**
+   * The branch the remote's HEAD names in an existing clone (what `clone` checked
+   * out), e.g. `master`. Throws when the clone can't tell (detached HEAD).
+   */
+  defaultBranch(repo: RepoRef): Promise<string>;
   diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
   /**
    * Names of files changed between two commits (`git diff --name-only base..head`).

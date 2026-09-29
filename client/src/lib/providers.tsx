@@ -39,7 +39,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
           },
         }),
         mutationCache: new MutationCache({
-          onError: (err) => notify.error(errorMessage(err)),
+          // `meta.silent`: a background mutation whose failure is expected (useSyncPulls).
+          onError: (err, _vars, _ctx, mutation) => {
+            if (mutation.meta?.silent) return;
+            notify.error(errorMessage(err));
+          },
         }),
       })
   );

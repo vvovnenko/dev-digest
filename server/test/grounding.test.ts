@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Finding } from '@devdigest/shared';
-import { groundFindings, groundingSummary } from '../src/platform/grounding.js';
+import { groundFindings, groundingSummary } from '@devdigest/reviewer-core';
 import { parseUnifiedDiff } from '../src/adapters/git/diff-parser.js';
 
 const DIFF = `diff --git a/src/config.ts b/src/config.ts
@@ -59,12 +59,21 @@ describe('citation grounding gate', () => {
     expect(res.dropped[0]!.reason).toMatch(/not present in diff/);
   });
 
-  it('full-file kinds (secret_leak) ground against the file, not a hunk', () => {
+  it('full-file kinds (secret_leak) ground against the file, not a hunk — for scanners that opt in', () => {
+    const res = groundFindings(
+      [f({ file: 'src/config.ts', start_line: 1, end_line: 1, kind: 'secret_leak' })],
+      diff,
+      { fileLevelKinds: true },
+    );
+    expect(res.kept).toHaveLength(1);
+  });
+
+  it('without the opt-in (model output), a full-file kind is line-grounded like any finding', () => {
     const res = groundFindings(
       [f({ file: 'src/config.ts', start_line: 1, end_line: 1, kind: 'secret_leak' })],
       diff,
     );
-    expect(res.kept).toHaveLength(1);
+    expect(res.kept).toHaveLength(0);
   });
 
   it('range intersection across N+1 hunk lines', () => {

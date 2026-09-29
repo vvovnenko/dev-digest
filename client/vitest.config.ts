@@ -17,5 +17,12 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // Report only (no thresholds): `pnpm coverage`.
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/vendor/**", "src/**/*.test.{ts,tsx}"],
+      reporter: ["text-summary", "html"],
+    },
   },
 });

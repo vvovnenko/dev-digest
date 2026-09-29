@@ -4,7 +4,13 @@ import { waitForPrRuns } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockLLMProvider, MockEmbedder, MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import {
+  MockLLMProvider,
+  MockEmbedder,
+  MockGitClient,
+  MockGitHubClient,
+  MockSecretsProvider,
+} from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { Review, StructuredRequest, StructuredResult } from '@devdigest/shared';
@@ -117,7 +123,11 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       overrides: {
         embedder: new MockEmbedder(),
         git: new MockGitClient({ diff: DIFF }),
+        // No real keys: the seeded agents run on openrouter, so without its
+        // mock "run all enabled agents" made real, billed OpenRouter calls.
+        secrets: new MockSecretsProvider(),
         llm: {
+          openrouter: new MockLLMProvider('openrouter', { structured }),
           [provider]: new MockLLMProvider(provider, { structured }),
         },
       },

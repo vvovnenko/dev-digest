@@ -8,7 +8,6 @@ import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
-import type { Container } from '../src/platform/container.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -164,15 +163,115 @@ d('GET /agents/:id/versions', () => {
       systemPrompt: 'x',
     });
 
-    const service = new AgentsService({ db } as unknown as Container);
-    const [{ id: defaultWs }] = await db
+    const service = new AgentsService({
+      agents: repo,
+      llm: async () => {
+        throw new Error('unused');
+      },
+    });
+    const [defaultWsRow] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)
       .where(eq(t.workspaces.name, 'default'));
+    const defaultWs = defaultWsRow!.id;
 
     // Owner can read; a different workspace is denied (undefined → 404 at route).
     expect(await service.listVersions(otherWs!.id, foreign.id)).toHaveLength(1);
-    expect(await service.listVersions(defaultWs!, foreign.id)).toBeUndefined();
-    expect(await service.getVersion(defaultWs!, foreign.id, 1)).toBeUndefined();
+    expect(await service.listVersions(defaultWs, foreign.id)).toBeUndefined();
+    expect(await service.getVersion(defaultWs, foreign.id, 1)).toBeUndefined();
+  });
+
+  describe('versioning under concurrency and skill changes', () => {
+    const newSkill = async (name: string) => {
+      const { db } = pg.handle;
+      const [ws] = await db.select().from(t.workspaces).where(eq(t.workspaces.name, 'default'));
+      const [skill] = await db
+        .insert(t.skills)
+        .values({ workspaceId: ws!.id, name, description: 'd', type: 'rubric', source: 'manual', body: 'b' })
+        .returning();
+      return skill!.id;
+    };
+    const versionsOf = async (app: Awaited<ReturnType<typeof makeApp>>, agentId: string) =>
+      (await app.inject({ method: 'GET', url: `/agents/${agentId}/versions` })).json() as {
+        version: number;
+        config: { skills?: string[]; model: string };
+      }[];
+
+    it('two concurrent config edits get two versions, each with its own snapshot', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+
+      await Promise.all(
+        ['model-a', 'model-b'].map((model) =>
+          app.inject({ method: 'PUT', url: `/agents/${agentId}`, payload: { model } }),
+        ),
+      );
+
+      const versions = await versionsOf(app, agentId);
+      expect(versions.map((v) => v.version)).toEqual([3, 2, 1]);
+      expect(new Set(versions.slice(0, 2).map((v) => v.config.model))).toEqual(new Set(['model-a', 'model-b']));
+      await app.close();
+    });
+
+    it('changing skills creates a version whose snapshot lists them; the same list again does not', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const [s1, s2] = [await newSkill('Rubric A'), await newSkill('Rubric B')];
+      const post = (payload: object) => app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload });
+
+      expect((await post({ skill_ids: [s1, s2] })).statusCode).toBe(200);
+      let versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({ version: 2, config: { skills: [s1, s2] } });
+
+      await post({ skill_ids: [s1, s2] });
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(2);
+
+      // Moving a skill changes the order → a new version.
+      await post({ skill_id: s1, order: 1 });
+      versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({ version: 3, config: { skills: [s2, s1] } });
+      await app.close();
+    });
+
+    it('a failed skills update leaves the previous skills and version untouched', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const s1 = await newSkill('Rubric C');
+      await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload: { skill_ids: [s1] } });
+
+      // The service refuses an unknown skill up front; the repository's own
+      // transaction must still roll back if an insert fails inside it.
+      const unknown = '00000000-0000-4000-8000-000000000000';
+      const [ws] = await pg.handle.db
+        .select({ id: t.workspaces.id })
+        .from(t.workspaces)
+        .where(eq(t.workspaces.name, 'default'));
+      await expect(
+        new AgentsRepository(pg.handle.db).replaceSkills(ws!.id, agentId, () => [s1, unknown]),
+      ).rejects.toThrow();
+
+      const links = (await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json() as { skill_id: string }[];
+      expect(links.map((l) => l.skill_id)).toEqual([s1]);
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(2);
+      await app.close();
+    });
+
+    it('a skill from another workspace, or no skill at all, is a 404 and changes nothing', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const [other] = await pg.handle.db.insert(t.workspaces).values({ name: `other-${Date.now()}` }).returning();
+      const [foreign] = await pg.handle.db
+        .insert(t.skills)
+        .values({ workspaceId: other!.id, name: 'Foreign', description: 'd', type: 'rubric', source: 'manual', body: 'b' })
+        .returning();
+
+      for (const payload of [{ skill_ids: [foreign!.id] }, { skill_id: '00000000-0000-4000-8000-000000000000' }]) {
+        const res = await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload });
+        expect(res.statusCode).toBe(404);
+      }
+      expect((await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json()).toEqual([]);
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(1);
+      await app.close();
+    });
   });
 });

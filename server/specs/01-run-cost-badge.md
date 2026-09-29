@@ -102,3 +102,17 @@ original agreement.
   review was deleted (`DELETE /reviews/:id` keeps the run) still counts, as it
   still shows in the Timeline. Test: `reviews.it.test.ts` ("the PR list's COST
   sums every done run of the PR; a failed run adds nothing").
+
+## Amendment (2026-09-28) — a failed or cancelled run records what it spent
+
+Supersedes acceptance criterion 2 and "failed/cancelled run" in the `NULL` list above.
+
+- A failed or cancelled run stores the tokens and `cost_usd` its LLM calls were billed
+  for, summed over the calls and repair attempts made before it stopped; `NULL` only when
+  the error reports no usage (`src/modules/reviews/run-executor.ts:303-314`,
+  `../reviewer-core/src/review/run.ts:234-238`). The Timeline therefore shows such a run's
+  cost; a failed run without a known cost still reads `—`. The run's trace reports the
+  same usage in its stats (`src/modules/reviews/run-executor.ts:434-441`).
+  Tests: `test/run-lifecycle.it.test.ts:331-343,425-435`.
+- The PR list's `COST` is unchanged: it still sums `done` runs only, so a failed run
+  adds nothing whatever it cost.

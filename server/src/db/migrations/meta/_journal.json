@@ -78,6 +78,34 @@
       "when": 1790155973316,
       "tag": "0010_funny_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790608510605,
+      "tag": "0011_wave1_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790608525552,
+      "tag": "0012_wave1_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790694822740,
+      "tag": "0013_money_numeric",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790701203099,
+      "tag": "0014_pulls_sync_watermark",
+      "breakpoints": true
     }
   ]
 }

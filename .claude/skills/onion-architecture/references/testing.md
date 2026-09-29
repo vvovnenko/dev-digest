@@ -37,23 +37,26 @@ const service = new RepoIntelService(container);
 ```
 
 ```ts
-// ✓ a service built from ports takes fakes directly
-import { InMemoryPullStore } from './helpers/pulls-fakes.js';
-import { ConfigError } from '../src/platform/errors.js';
+// ✓ test/pulls-service.test.ts:134-148 (abridged) — a service built from ports takes fakes
+it('serves what is stored when GitHub is unreachable, and 404s outside the workspace', async () => {
+  const store = new InMemoryPulls();            // `implements PullStore` over arrays (:35)
+  store.pulls.push(pull(7, { additions: 3 }));
+  store.rollupByPr.set('pr-7', { score: 88, findingsBySeverity: { CRITICAL: 0, WARNING: 1, SUGGESTION: 0 }, costUsd: 0.01 });
+  const service = new PullsService({ pulls: store, github: offline, log: silent });
 
-it('serves persisted PRs when GitHub is unavailable', async () => {
-  const pulls = new InMemoryPullStore({ repos: [{ id: 'r1', owner: 'o', name: 'n', workspaceId: 'w1' }] });
-  const service = new PullsService({
-    pulls,
-    github: async () => { throw new ConfigError('no token'); },
-    log: { warn: () => {} },
-  });
-  expect(await service.listForRepo('w1', 'r1')).toEqual([]);
+  expect(await service.listForRepo('ws', REPO.id)).toMatchObject([{ number: 7, score: 88, cost_usd: 0.01 }]);
+  expect(await service.detail('ws', 'pr-7')).toMatchObject({ number: 7, files: [{ path: 'a.ts' }] });
+  await expect(service.listForRepo('other', REPO.id)).rejects.toBeInstanceOf(NotFoundError);
 });
 ```
 
-- A fake is a small class that `implements` the port over arrays or maps. It lives in
-  `test/helpers/<module>-fakes.ts` and is owned with the port: change them together.
+- A fake is a small class that `implements` the port over arrays or maps, owned with the
+  port: change them together. While one test file uses it, keep it inline there; move it
+  to `test/helpers/<module>-fakes.ts` when a second file needs it.
+- Real examples: `test/pulls-service.test.ts` (`PullsService`, `PollingService`),
+  `test/repos-service.test.ts` (`RepoStore`, `JobQueue`, `RepoIndexing` fakes),
+  `test/settings-service.test.ts` (`SettingsStore`, `SecretsProvider`),
+  `test/auth-local.test.ts` (the auth adapter over an in-memory `IdentityStore`).
 - Reuse the adapter mocks in `src/adapters/mocks.ts` for the shared ports.
 - Assert on outcomes (what the store now holds, what the method returned), not on which
   methods were called.
@@ -61,7 +64,8 @@ it('serves persisted PRs when GitHub is unavailable', async () => {
 ## Contract suites keep fakes honest
 
 One suite per port, run against the fake in the unit lane and against the Drizzle
-repository in the `.it` lane, so a fake can't drift from the real thing (T15).
+repository in the `.it` lane, so a fake can't drift from the real thing (T15). None
+exists yet; the first port with fakes in two test files is the one to start with.
 
 ```ts
 // test/helpers/pull-store-contract.ts
@@ -80,11 +84,15 @@ export function pullStoreContract(make: () => Promise<{ store: PullStore; seedRe
   `pgvector/pgvector:pg16`, runs migrations and returns a Drizzle handle (T16). A test that
   imports it must be named `*.it.test.ts`.
 - Test the transaction boundary: force the second write to fail and assert the first one
-  was rolled back.
+  was rolled back (`test/agents-versions.it.test.ts`: a failed skills update leaves the
+  previous skills and version untouched; `test/run-lifecycle.it.test.ts`: a run cancelled
+  while its review is being saved saves nothing).
 - If Docker can't reach Docker Hub: `TESTCONTAINERS_RYUK_DISABLED=true pnpm test`
   (`server/INSIGHTS.md`).
-- Vitest 2's `globalSetup` with `provide`/`inject` could start one container per run
-  instead of per file (T17). It is not set up here; treat it as a separate change.
+- The `integration` project shares one Postgres: `test/helpers/pg-global-setup.ts` starts it
+  and migrates a template database once, and `startPg()` gives each file its own copy
+  (`CREATE DATABASE … TEMPLATE`), dropped by `stop()` (T17). The global setup must not import
+  a module that imports `inject` from `vitest` (`test/helpers/pg-shared.ts` exists for that).
 
 ## Routes: build the app and inject
 
@@ -92,9 +100,10 @@ export function pullStoreContract(make: () => Promise<{ store: PullStore; seedRe
   `await app.close()` (T4). `test/routes-smoke.test.ts` is the unit-lane example.
 - Routes built from ports need only adapter overrides; repositories come from the real
   test DB in the `.it` lane.
-- Careful: `buildApp` without `db` connects to `DATABASE_URL` from `server/.env` and runs
-  the boot reaper against it (`server/INSIGHTS.md`). Pass a throwaway `db` when that
-  matters.
+- `buildApp` without `db` builds its own from `DATABASE_URL`; the vitest config points that
+  at an unreachable port and blanks every provider key (`server/vitest.config.ts`), so a unit
+  test can't reap the dev DB or make a billed call. Keep it that way: never set a real
+  `DATABASE_URL` or key in a test.
 
 ## Where test files go
 

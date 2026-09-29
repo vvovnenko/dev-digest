@@ -6,7 +6,7 @@ native (Rust + CDP) browser-automation CLI. **No Playwright, no LLM, no API key.
 
 agent-browser is a CLI, not a test framework, so this package adds a thin
 convention: each flow is a JSON list of agent-browser commands, run in order
-against one shared browser session by `run.ts`.
+by `run.ts`, each flow in its own agent-browser session (`--session <flow file>`).
 
 ## How a flow works
 
@@ -14,11 +14,11 @@ A spec lives in `specs/NN-name.flow.json`:
 
 ```jsonc
 {
-  "name": "App boots and lands on the seeded repo's PR list",
+  "name": "App boots and lands on a repo's PR list",
   "steps": [
-    { "cmd": ["open", "{BASE}/"],            "label": "load the app root" },
-    { "cmd": ["wait", "--url", "/pulls"],    "label": "root redirects to PRs" },
-    { "cmd": ["wait", "--text", "#482"],     "label": "seeded PR row visible" }
+    { "cmd": ["open", "{BASE}/"],                 "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"],         "label": "root redirects to PRs" },
+    { "cmd": ["wait", "--text", "Pull Requests"], "label": "PR list heading renders" }
   ]
 }
 ```
@@ -29,11 +29,22 @@ A spec lives in `specs/NN-name.flow.json`:
   (they time out and exit non-zero if the condition never holds).
 - Optional `"assert": { "stdoutIncludes": "…" }` adds a substring check on the
   command's stdout.
+- `run.ts` checks every flow file before running any: a non-empty `name`, a non-empty
+  `steps` array, each `cmd` a non-empty array of strings. A malformed file fails the
+  run with its name and what is wrong.
 - Locators are deterministic only (`--url`, `--text`, `find role|text|label`).
   We never use the AI `chat` command, so runs are stable and key-free.
+- agent-browser 0.27 quirks, found writing flow 08: `find … click` clicks by coordinates
+  without scrolling the app shell's inner pane, so a target below the fold is missed
+  silently (the step still passes) — give the flow a taller `set viewport`; `find label`
+  matches only a `<label>`, so an icon button with `aria-label` needs
+  `find role button --name`; `wait --text` matches rendered text, so a CSS-uppercased
+  label (`SectionLabel`) must be matched in capitals or not at all.
 
-Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
-#482, the seeded agents), so nothing triggers a model call.
+Flows 01–07 only read the seeded data (the demo repo `acme/payments-api`, PR
+#482, the seeded agents). Flow 08 writes — it runs a review and accepts a finding —
+and relies on the API's fake LLM (`DEVDIGEST_FAKE_LLM=1`), so no flow calls a real
+model. Against a dev API without it, flow 08 would bill your OpenRouter key.
 
 > **Precondition: a freshly-seeded DB.** Flow `02` follows the home redirect to
 > the *first* repo, so it assumes the seeded demo repo is the only one. CI
@@ -61,8 +72,13 @@ npm i -g agent-browser && agent-browser install
 # down. Safe to run while your normal dev stack is up — it never touches your
 # dev DB or the devdigest_pgdata volume.
 ./scripts/e2e.sh
-# or: cd e2e && npm install && npm run e2e:hermetic
+# or: cd e2e && npm run e2e:hermetic   (installs whatever deps are missing, e2e/ included)
 ```
+
+The hermetic web builds into `client/.next-e2e`, so a dev web on `:3000` keeps its own
+`client/.next`; `next dev` rewrites `client/tsconfig.json` and `next-env.d.ts` for that
+dir, and the script puts both back on exit. The API it boots runs with
+`DEVDIGEST_FAKE_LLM=1` — a deterministic fake model, so no key is needed.
 
 The isolated Postgres is ephemeral (no persistent volume), so it's empty every
 run and the seeded demo repo `acme/payments-api` is the only one — which is
@@ -86,6 +102,7 @@ Env knobs:
   `E2E_WEB_PORT` (3100), `E2E_PG_CONTAINER` (`devdigest-e2e-postgres`),
   `E2E_PG_IMAGE` (`pgvector/pgvector:pg16`).
 
+A failing step prints agent-browser's whole stderr and stdout under the `✗` line.
 Failure screenshots are written to `e2e/test-results/` (git-ignored; uploaded as
 a CI artifact by `.github/workflows/e2e-web.yml`).
 
@@ -93,10 +110,11 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 
 | Spec | Flow |
 |------|------|
-| `01-app-boot` | root → redirect to first repo's PR list → seeded PR #482 |
+| `01-app-boot` | root → redirect to first repo's PR list → "Pull Requests" heading (order-independent; #482 is first asserted in 02) |
 | `02-repo-pulls-detail` | PR list → open PR #482 → review detail route |
 | `03-agents` | agents list renders the seeded reviewer agents |
-| `04-pr-findings` | PR #482 → Agent runs tab → seeded run verdict + findings; expand → FindingCard |
+| `04-pr-findings` | PR #482 → Agent runs tab → seeded run verdict + findings → FindingCard (the newest run opens by default; no click) |
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
+| `08-review-journey` | PR #482 → Run Review → live run → fake finding → Accept → run trace (writes; fake LLM) |

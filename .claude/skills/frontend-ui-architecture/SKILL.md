@@ -2,7 +2,7 @@
 name: frontend-ui-architecture
 description: Decides where frontend code lives and how it is split in a React + Next.js App Router codebase — route-local vs shared components, when to split a component, and where constants, helpers, utils, custom hooks, types, business logic and API/query code belong, plus the Server/Client Component boundary. Use whenever creating, moving, splitting or reviewing a component, page, layout, hook, helper, constants or types file in client/, or when choosing between inline code, helpers.ts, src/lib and a hook — even if the request only says "add a filter to this page", "clean up this component" or "where should this go". Architecture and code organization only; rendering rules, hooks correctness and performance belong to react-best-practices, Next.js file-convention and API details to next-best-practices.
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Frontend UI architecture
@@ -20,14 +20,14 @@ memoization, performance) and `next-best-practices` (file-convention and API mec
 
 | Code | Lives in |
 | --- | --- |
-| Route entry | `src/app/**/page.tsx`, `layout.tsx`: read params, call hooks, compose. Nothing else |
+| Route entry | `src/app/**/page.tsx`: a thin server file (`generateMetadata`) rendering one client `<Name>View`, which reads params, calls hooks and composes. Screens inside the app frame sit in the `src/app/(shell)/` group, whose `layout.tsx` mounts the shell once |
 | UI used by one route | `src/app/<route>/_components/<Name>/`, which may nest its own `_components/` |
 | A component folder | `<Name>.tsx` + `index.ts`, and when needed `styles.ts` · `constants.ts` · `helpers.ts` · `<Name>.test.tsx` |
 | Non-UI code for a whole route | `constants.ts` / `helpers.ts` / `styles.ts` next to that `page.tsx` |
 | UI used by 2+ routes | `src/components/<kebab-name>/<Pascal>.tsx`, same optional files |
 | Primitives (Button, Card, Chip…) and design tokens (`SEV`, `CAT`) | `@devdigest/ui`, vendored and read-only. Reuse before defining your own |
 | Shared non-UI logic | `src/lib/<purpose>.ts`, named for what it does (`github-urls.ts`, `model-label.ts`) |
-| Server data | query/mutation hooks in `src/lib/hooks/<domain>.ts` over `src/lib/api.ts`, the only network path |
+| Server data | query/mutation hooks in `src/lib/hooks/<domain>.ts` over `src/lib/api.ts`, the only network path; PR/run keys from `src/lib/hooks/keys.ts` |
 | UI-only hooks of a shared component | colocated, e.g. `src/components/app-shell/hooks/` |
 | Types | contracts via type-only imports from `@devdigest/shared`; UI view models in `src/lib/types.ts` or colocated |
 | UI copy | `messages/en/<namespace>.json` |
@@ -142,7 +142,9 @@ one the task needs.
   - Shareable UI state goes in the URL. Local state goes in the lowest component that
     needs it. Cross-tree state goes in a context provider in `src/lib`.
 - **Data layer:** one API client, hooks grouped by domain. A key starts with the resource
-  and includes every `queryFn` input. Invalidation happens in the mutation hook.
+  and includes every `queryFn` input; where related queries are invalidated together, a
+  key factory gives them a shared prefix (`src/lib/hooks/keys.ts`). Invalidation happens
+  in the mutation hook.
 - **Types:** colocate them; shared types go in the narrowest module. Contracts come
   through `import type` from `@devdigest/shared`, and variants are derived with
   `Pick`/`Omit`.
@@ -150,10 +152,10 @@ one the task needs.
 **Next.js App Router** → [references/nextjs-app-router.md](references/nextjs-app-router.md)
 
 - `src/app` holds routing and route-local `_components/`. Shared code lives outside
-  `app`. Route groups exist only to share a layout.
+  `app`. Route groups exist only to share a layout (`(shell)` shares the app frame).
 - Components are Server Components by default, with `"use client"` on the smallest
   interactive subtree. A thin server `page.tsx` renders a client view
-  (`src/app/agents/page.tsx`). Props are minimal and serializable.
+  (`src/app/(shell)/agents/page.tsx`). Props are minimal and serializable.
 - **One data model:** the external Fastify API through TanStack Query hooks in client
   components. Nothing fetches on the server; there is no DAL, no Server Actions and no
   Route Handlers. Adding a second data path is an architecture decision, so ask first.

@@ -19,7 +19,7 @@ Mandatory in every session; the `engineering-insights` skill has the details
 
 ## Stack
 
-Node ≥22 · pnpm ≥10 · TypeScript 5.7 · Fastify 5 · Drizzle 0.38 + Postgres 16
+Node ≥22 · pnpm ≥10 · TypeScript 5.7 · Fastify 5 · Drizzle 0.45 + Postgres 16
 (pgvector) · Next.js 15 · React 19 · TanStack Query 5 · next-intl 3 · Tailwind 4 ·
 Zod 3 · Vitest 2 · agent-browser (e2e)
 

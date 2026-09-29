@@ -12,6 +12,8 @@ Zod 3 (types only) · lucide-react · recharts · react-markdown + remark-gfm ·
 pnpm dev          # next dev -p 3000
 pnpm typecheck    # tsc --noEmit
 pnpm test         # vitest + jsdom — no API needed (there is no lint script)
+pnpm lint         # eslint + type-aware typescript-eslint (warn-only) — added in wave 4
+pnpm coverage     # v8 report, no thresholds
 ```
 
 ## Conventions
@@ -22,8 +24,15 @@ pnpm test         # vitest + jsdom — no API needed (there is no lint script)
 - Network calls only through `src/lib/api.ts`; data only through hooks in
   `src/lib/hooks/*` (TanStack Query, inline string-array keys). The one exception
   is SSE in `useRunEvents`.
+- PR/run query keys come from `src/lib/hooks/keys.ts` (prefix invalidation); the
+  mutation hook invalidates what it changes — pages and components don't.
+- Every screen but onboarding sits in `src/app/(shell)/`: its layout mounts `AppShell`
+  once, a page sets its breadcrumb with `useShellCrumb`; `page.tsx` is a server file
+  (title via `generateMetadata` + `shell.titles`) rendering a client `<Name>View`.
 - Don't add `onError` toasts to mutations — `src/lib/providers.tsx` already
   toasts globally, so you get two.
+- `meta: { silent: true }` skips that global toast — only for background mutations whose
+  failure is expected (`useAutoSyncPulls`). The PR list GET only reads; `useSyncPulls` imports.
 - Styling is `style={s.x}` from a colocated `styles.ts` (`satisfies
   CSSProperties`, CSS variables). `className` only for the `mono`/`tnum` utilities.
 - UI strings go in `messages/en/<ns>.json`; every file there is auto-loaded as a
@@ -47,6 +56,8 @@ pnpm test         # vitest + jsdom — no API needed (there is no lint script)
 
 - Tests do **not** mock `fetch` (README says they do): they `vi.mock()` the hooks
   module and wrap components in `NextIntlClientProvider`.
+- Since 2026-09-29 the README agrees; the data-layer tests (`src/lib/hooks/*.test.tsx`) mock
+  `src/lib/api.ts` under a real `QueryClient` instead of the hooks.
 - `NEXT_PUBLIC_API_BASE` is baked in at build time — restart/rebuild after
   changing it.
 - There are no `data-testid`s — e2e flows match visible text, so changing copy

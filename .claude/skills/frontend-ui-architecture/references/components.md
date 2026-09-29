@@ -29,11 +29,12 @@ When you promote, move the whole folder (component, styles, constants, helpers, 
 and update the imports. Don't leave a re-export shim behind.
 
 The same ladder applies to a component's constants and helpers. When a second component
-needs `VerdictBanner/constants.ts`'s `VERDICT_META`, move it to the route rung
-(`pulls/[number]/constants.ts`), and have both import it from there. Don't re-export it
-through `VerdictBanner/index.ts`, and don't deep-import `../VerdictBanner/constants`:
-that makes one component's internals another's dependency. The move belongs to the
-change that adds the second consumer.
+needed `VerdictBanner/constants.ts`'s `VERDICT_META`, it moved to the route rung
+(`pulls/[number]/constants.ts`), and `VerdictBanner` and `ReviewRunAccordion` both import
+it from there now. Don't re-export such a constant through the first component's
+`index.ts`, and don't deep-import `../VerdictBanner/constants`: that makes one
+component's internals another's dependency. The move belongs to the change that adds
+the second consumer.
 
 Sources: A1, A9, A12, A13, A14, A16.
 

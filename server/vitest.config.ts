@@ -1,4 +1,6 @@
 import { defineConfig } from 'vitest/config';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 export default defineConfig({
@@ -11,9 +13,27 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
-    // Testcontainers integration tests can be slow to spin up Postgres.
-    testTimeout: 120_000,
-    hookTimeout: 120_000,
+    // No `include` here: the projects in vitest.workspace.ts set it, and
+    // `extends` concatenates arrays — a base include would add to both projects.
+    // Hermetic whatever server/.env says (dotenv never overrides a variable
+    // that is already set): no real provider key, not the developer's stored
+    // keys, and not the dev database — an app built without an explicit `db`
+    // gets an unreachable one, so its boot reaper can't fail live dev runs.
+    env: {
+      OPENAI_API_KEY: '',
+      ANTHROPIC_API_KEY: '',
+      OPENROUTER_API_KEY: '',
+      GITHUB_TOKEN: '',
+      GITHUB_PAT: '',
+      DEVDIGEST_SECRETS_PATH: path.join(mkdtempSync(path.join(tmpdir(), 'devdigest-test-')), 'secrets.json'),
+      DATABASE_URL: 'postgres://devdigest:devdigest@127.0.0.1:1/unreachable',
+    },
+    // Report only (no thresholds): `pnpm coverage`.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/vendor/**', 'src/db/migrations/**', 'src/**/*.test.ts'],
+      reporter: ['text-summary', 'html'],
+    },
   },
 });

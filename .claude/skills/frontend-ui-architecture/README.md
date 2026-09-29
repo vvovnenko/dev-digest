@@ -1,6 +1,6 @@
 # frontend-ui-architecture
 
-**Version 1.0.0** · the version is recorded in `SKILL.md` → `metadata.version`.
+**Version 1.3.0** · the version is recorded in `SKILL.md` → `metadata.version`.
 
 A skill about **where frontend code lives and how it is split** in a React 19 + Next.js
 App Router + TanStack Query codebase: component placement and splitting, constants,
@@ -177,6 +177,10 @@ assertions.
 - `dedupe-format-and-colors`: remove the duplicate `formatWhen` and severity colour maps.
 - `run-filters-component`: add a filter bar to the Review runs tab.
 
+The tasks describe the code as it was before the wave-3 client refactor, which applied
+the first two (and moved the routes into `src/app/(shell)/`). To re-run them, check out
+commit `de58de8` (the last one before wave 3) in a scratch worktree.
+
 Each task was run by a subagent with the skill and by one without it (baseline, told not
 to read `.claude/skills/`). The agents wrote proposals only; the repo was read-only. The
 proposals were then graded against the assertions using the `skill-creator` process.
@@ -259,6 +263,25 @@ README's changelog in the same change.
 
 ### Changelog
 
+- **1.3.0 — 2026-09-28.** Refreshed after the wave-3 client refactor:
+  - **Repo facts.** The `(shell)` route group and its layout, thin server `page.tsx` +
+    client `<Name>View` on every route, `generateMetadata` titles, the PR query-key
+    factory `src/lib/hooks/keys.ts`, `lib/format.ts` and `lib/finding-location.ts` are in
+    `SKILL.md`, `devdigest.md` and the references.
+  - **Guidance.** Keys: a key factory for queries that are invalidated together; optimistic
+    updates live in the mutation hook (`logic-and-data.md`).
+  - **Known deviations pruned** (fixed in wave 3): logic inline in pages; local severity
+    colour maps; two verdict colours; `formatWhen` ×2; `lineLabel` ×3; constants in
+    `page.tsx` / `.tsx` files (`OPEN_STATUSES`, `VALID_TABS`, `VERDICT_COLOR`,
+    `SEV_COLOR`); inline styles in `ReviewRunAccordion` and `AddRepoView`; `RunHistory/`
+    without `index.ts`. Kept: severity order ×2, needs-review count ×2, constants in
+    `helpers.ts` / other `.tsx` files, `RunHistory` inline styles, `diff-viewer` /
+    `severity-counts` folder anomalies, mixed barrel styles.
+  - **"Behaviour traps on the PR page"** became "Behaviour on the PR page that moved code
+    must keep": `useOpenRuns` owns open state and the single shortcut target, the jump
+    nonce is cleared after scrolling, and the `g` chord stops its second key.
+  - **Examples 1–3** say where the applied result lives; example 5 shows the current page
+    with `generateMetadata`. The evals still target pre-wave-3 code (see Evaluation).
 - **1.2.0 — 2026-09-27.** Changes after the second eval round:
   - **Contract docs.** `client/specs/pages.md` and `e2e/specs/flows.md` citations are
     corrected in place; only `INSIGHTS.md` is append-only (the user's decision). Before

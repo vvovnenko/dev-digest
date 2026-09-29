@@ -7,6 +7,7 @@ import type {
   StructuredRequest,
   StructuredResult,
   ChatMessage,
+  LLMUsage,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
@@ -66,7 +67,7 @@ export class AnthropicProvider implements LLMProvider {
     const { system, rest } = splitSystem(req.messages);
     const res = await this.client.messages.create({
       model: req.model,
-      system: system || undefined,
+      ...(system ? { system } : {}),
       messages: rest,
       max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
       temperature: req.temperature ?? 0.2,
@@ -101,7 +102,7 @@ export class AnthropicProvider implements LLMProvider {
         withTimeout(
           this.client.messages.create({
             model: req.model,
-            system: system || undefined,
+            ...(system ? { system } : {}),
             messages,
             max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
             temperature: req.temperature ?? 0,
@@ -113,7 +114,7 @@ export class AnthropicProvider implements LLMProvider {
               },
             ],
             tool_choice: { type: 'tool', name: toolName },
-          }),
+          }, req.signal ? { signal: req.signal } : undefined),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );
@@ -144,9 +145,11 @@ export class AnthropicProvider implements LLMProvider {
       });
     }
 
-    throw new ExternalServiceError('Anthropic structured output failed schema validation', {
-      raw: lastRaw,
-    });
+    // Carry what the attempts cost, so a failed run still records it (read via `usage`).
+    throw Object.assign(
+      new ExternalServiceError('Anthropic structured output failed schema validation', { raw: lastRaw }),
+      { usage: { tokensIn, tokensOut, costUsd: estimateCost(req.model, tokensIn, tokensOut) } satisfies LLMUsage },
+    );
   }
 
   async embed(): Promise<number[][]> {

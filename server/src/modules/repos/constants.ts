@@ -8,17 +8,15 @@ export const CLONE_JOB_KIND = 'clone';
 /** Clone depth — shallow clone (latest commit only) keeps imports fast. */
 export const CLONE_DEPTH = 1;
 
-/** Secret name (via the Secrets adapter) holding the GitHub PAT for private clones. */
-export const GITHUB_TOKEN_SECRET = 'GITHUB_TOKEN';
+/** The only host a repo URL may point at; clones always use `https://github.com/<owner>/<name>.git`. */
+export const GITHUB_HOST = 'github.com';
 
 /**
- * Parse `owner`/`repo` from a GitHub URL — supports both
- * `https://github.com/owner/repo(.git)` and `git@github.com:owner/repo.git`.
+ * One owner or repo-name segment as GitHub allows it: letters, digits, `.`, `_`, `-`,
+ * never `.` or `..`. The segments become the clone path `<cloneDir>/<owner>/<name>`,
+ * so this is a path-safety check as well as a format check.
  */
-export const GITHUB_URL_REGEX = /github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/;
+export const REPO_SEGMENT_REGEX = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 
-/** Username embedded into an authenticated https github.com clone URL. */
-export const GIT_TOKEN_USERNAME = 'x-access-token';
-
-/** Host for which a token is embedded into an https clone URL. */
-export const GITHUB_HTTPS_HOST = 'github.com';
+/** The SSH form `git@github.com:owner/repo(.git)`, matched in full. */
+export const GITHUB_SSH_URL_REGEX = /^git@github\.com:([^/]+)\/([^/]+)$/;

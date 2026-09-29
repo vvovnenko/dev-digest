@@ -120,7 +120,7 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     await db.insert(t.prFiles).values([
       { prId: pr!.id, path: 'src/middleware/ratelimit.ts', additions: 84, deletions: 0 },
       { prId: pr!.id, path: 'src/api/public/webhooks.ts', additions: 31, deletions: 6 },
-      { prId: pr!.id, path: 'src/config.ts', additions: 4, deletions: 0 },
+      { prId: pr!.id, path: 'src/config.ts', additions: 4, deletions: 0, patch: DEMO_CONFIG_PATCH },
       { prId: pr!.id, path: 'src/api/users.ts', additions: 7, deletions: 2 },
     ]);
 
@@ -222,6 +222,25 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
 
   return { workspaceId, userId };
 }
+
+/**
+ * The one seeded patch: without it the demo PR has no reviewable text (no clone
+ * → `PrDiffSource` falls back to `pr_files.patch`), so a review fails before the
+ * model is called. The hermetic e2e review flow depends on it.
+ */
+const DEMO_CONFIG_PATCH = [
+  '@@ -8,6 +8,10 @@ export const config = {',
+  "   port: Number(process.env.PORT ?? 3000),",
+  "   logLevel: process.env.LOG_LEVEL ?? 'info',",
+  "   corsOrigin: process.env.CORS_ORIGIN ?? '*',",
+  '+  rateLimit: {',
+  '+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000),',
+  '+    max: Number(process.env.RATE_LIMIT_MAX ?? 100),',
+  '+  },',
+  '   database: {',
+  '     url: process.env.DATABASE_URL,',
+  '   },',
+].join('\n');
 
 // CLI entrypoint
 if (import.meta.url === `file://${process.argv[1]}`) {

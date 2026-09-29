@@ -6,6 +6,7 @@ import type {
   CompletionResult,
   StructuredRequest,
   StructuredResult,
+  LLMUsage,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
@@ -104,7 +105,7 @@ export class OpenAIProvider implements LLMProvider {
               type: 'json_schema',
               json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
             },
-          }),
+          }, req.signal ? { signal: req.signal } : undefined),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );
@@ -129,9 +130,11 @@ export class OpenAIProvider implements LLMProvider {
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
 
-    throw new ExternalServiceError('OpenAI structured output failed schema validation', {
-      raw: lastRaw,
-    });
+    // Carry what the attempts cost, so a failed run still records it (read via `usage`).
+    throw Object.assign(
+      new ExternalServiceError('OpenAI structured output failed schema validation', { raw: lastRaw }),
+      { usage: { tokensIn, tokensOut, costUsd: estimateCost(req.model, tokensIn, tokensOut) } satisfies LLMUsage },
+    );
   }
 
   async embed(texts: string[]): Promise<number[][]> {

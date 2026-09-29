@@ -38,7 +38,7 @@ export function InlineComposer({
       setText("");
       onClose();
     } catch {
-      /* error toast is raised by the caller; keep the draft open */
+      /* the global mutation handler toasts the error; keep the draft open */
     }
   };
   return (

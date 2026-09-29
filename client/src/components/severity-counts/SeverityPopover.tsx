@@ -19,7 +19,8 @@ import {
 import type { FindingRecord } from "@devdigest/shared";
 import { githubBlobUrl } from "@/lib/github-urls";
 import { POPOVER_GAP, POPOVER_MAX_HEIGHT, POPOVER_WIDTH, VIEWPORT_MARGIN } from "./constants";
-import { lineLabel, plainText, sortBySeverity } from "./helpers";
+import { lineLabel } from "@/lib/finding-location";
+import { plainText, sortBySeverity } from "./helpers";
 import { s } from "./styles";
 
 export interface SeverityPopoverProps {

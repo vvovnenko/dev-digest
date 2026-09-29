@@ -44,16 +44,18 @@ Paths are relative to `server/`; reviewer-core files appear as `../reviewer-core
 | `onion-platform-no-features` | `src/platform/**` except `container.ts` | modules, adapters, root | move wiring into the container |
 | `onion-kernel-pure` | `vendor/shared/**`, `platform/errors.ts` | anything but themselves and `zod` | keep the kernel dependency-free |
 | `onion-db-no-upward` | `src/db/**` | modules, adapters, platform, Fastify, SDKs | seed data belongs to `db/` itself |
-| `onion-core-public-api-only` | `src/**` | `../reviewer-core/**` except `src/index.ts` | import `@devdigest/reviewer-core` |
+| `onion-core-public-api-only` | `src/**` | `../reviewer-core/**` except `src/index.ts` and `src/llm/openrouter.ts` | import `@devdigest/reviewer-core` |
+| `onion-core-provider-in-root-only` | `src/**` except `platform/container.ts` | `../reviewer-core/src/llm/openrouter.ts` | take an `LLMProvider` port; the container builds the provider |
 | `core-no-server-src` | `reviewer-core/src/**` | server `src/**` except `vendor/shared` | only contracts cross into the engine |
 | `core-no-infra` | `reviewer-core/src/**` | Drizzle, Fastify, Octokit, simple-git, Anthropic SDK, ast-grep, ripgrep, p-queue, dotenv, `node:fs`/… | inject it through `ReviewInput` |
 | `core-llm-sdk-in-provider-only` | `reviewer-core/src/**` except `llm/openrouter.ts` | `openai` (except `openai/helpers/*`) | go through `LLMProvider` |
 | `no-circular` | anything | import cycles, type-only edges included | invert one edge with a port |
 | `not-to-unresolvable` | anything | imports that don't resolve | install deps; never baseline it |
+| `no-orphans` | a file nothing imports and that imports nothing | — | delete it or wire it in |
+| `no-unreachable-from-entry` | `src/server.ts`, `src/db/migrate.ts`, `src/db/seed.ts` | any `src/` or engine file they never reach (tests aren't cruised) | delete the dead code, or wire it in; exempt: the entries, `adapters/mocks.ts`, `settings/feature-models.ts` (pre-staged, tested) |
 
 Allowed on purpose: application code may import `platform/errors`, `run-logger`,
-`price-book`, `resilience`, `trace-builder` and the reviewer-core re-exports
-(`grounding`, `prompt`, `structured`). The composition root (`app.ts`, `server.ts`,
+`price-book`, `resilience` and the reviewer-core re-export `structured`. The composition root (`app.ts`, `server.ts`,
 `platform/container.ts`, `modules/index.ts`) is exempt from the direction rules.
 
 ## Options and why each is there
@@ -76,8 +78,9 @@ A known violation is matched by rule name, `from` and `to` (and cycle members). 
 that means:
 
 - **New code can't add a new violating pair.** `pnpm arch` fails.
-- **More calls through an already-baselined pair pass.** Another Drizzle query in
-  `pulls/routes.ts` is invisible to the tool; the skill's scope rules and review catch it.
+- **More calls through an already-baselined pair pass.** Another `readFile` in a
+  repo-intel pipeline file is invisible to the tool; the skill's scope rules and review
+  catch it.
 - **A fixed violation must leave the baseline**, or it would silently re-allow the same
   import later. `pnpm arch:stale` fails until you run `pnpm arch:baseline`.
 - **Moving or renaming a legacy file re-keys its entries**: they show up as new. Fix them
@@ -110,14 +113,18 @@ For the full graph of one file:
 
 ## What the tool can't see
 
-- Member access: `app.container.db` used in a route is not an import.
+- Member access: `app.container.db` used in a route is not an import. For routes this
+  gap is closed by `server/test/routes-container-ratchet.test.ts` (unit lane, so CI): it
+  counts `container.db` and `container.<member>.<method>(` per `routes.ts`, allows only
+  `repo-intel/routes.ts: 2`, and fails when a count rises or falls (lower the allowance
+  when you remove one). Wiring a service (`jobs: container.jobs`,
+  `github: () => container.github()`) is not counted.
 - Globals: `fetch`, `process.env`, `setTimeout` need no import.
-- `OpenRouterProvider` reached through `@devdigest/reviewer-core`'s `index.ts`.
 - Dynamic `import()` with a non-literal specifier.
 - More uses of an already-baselined `(from, to)` pair.
 
-These are covered by the review checklist in `SKILL.md`, not by CI (A1: document the
-rules, enforce what a tool can, allow documented exceptions).
+Apart from the ratchet, these are covered by the review checklist in `SKILL.md`, not by
+CI (A1: document the rules, enforce what a tool can, allow documented exceptions).
 
 ## Changing a rule
 

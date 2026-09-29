@@ -1,6 +1,6 @@
 # Client suite — Next.js web app (@devdigest/web).
 # Typecheck + component/unit tests (vitest + jsdom). Hermetic: no API, no DB,
-# no browser — fetch is mocked in the tests. The full-stack browser flow lives
+# no browser — the tests mock the hook modules or src/lib/api.ts. The full-stack browser flow lives
 # in e2e-web.yml.
 name: client
 
@@ -9,10 +9,12 @@ on:
     branches: [main]
     paths:
       - 'client/**'
+      - 'server/src/vendor/shared/**'
       - '.github/workflows/client.yml'
   pull_request:
     paths:
       - 'client/**'
+      - 'server/src/vendor/shared/**'
       - '.github/workflows/client.yml'
 
 permissions:
@@ -26,17 +28,18 @@ jobs:
   test:
     name: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -46,4 +49,13 @@ jobs:
 
       - run: pnpm typecheck
 
+      # Type-aware lint (typescript-eslint, eslint.config.mjs). Warn-only for now.
+      - run: pnpm lint
+
       - run: pnpm test
+
+      # src/vendor/shared is a hand-copy of server/src/vendor/shared (types
+      # only here): the two must stay identical.
+      - name: Contract copies in sync
+        working-directory: .
+        run: diff -r server/src/vendor/shared client/src/vendor/shared

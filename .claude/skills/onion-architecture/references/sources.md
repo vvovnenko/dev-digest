@@ -51,7 +51,7 @@ the end say where a source describes a newer version than this repo pins.
 | T5 | Fastify, [Type Providers](https://fastify.dev/docs/latest/Reference/Type-Providers/) | Type providers infer types only and don't propagate: every route plugin calls `withTypeProvider()`. |
 | T6 | Matteo Collina, [Building a modular monolith with Fastify](https://gitnation.com/contents/building-a-modular-monolith-with-fastify) | Domain modules as plugins, no singletons, break encapsulation only on purpose. |
 | T7 | Drizzle, [Transactions](https://orm.drizzle.team/docs/transactions) | `db.transaction(async (tx) => …)`, `tx.rollback()`, nested savepoints, isolation options; `tx` has the same API as `db`. |
-| T8 | Drizzle, [v0 → v1 changes](https://orm.drizzle.team/docs/v0-v1-changes) | The site documents v1; on 0.38 keep `relations()` and the separate `drizzle-zod` package. |
+| T8 | Drizzle, [v0 → v1 changes](https://orm.drizzle.team/docs/v0-v1-changes) | The site documents v1; on 0.45 keep `relations()` and the separate `drizzle-zod` package. |
 | T9 | Lazar Nikolov (Sentry), [Atomic Repositories in Clean Architecture and TypeScript](https://blog.sentry.io/atomic-repositories-in-clean-architecture-and-typescript/) | With Drizzle: repository methods take an optional `tx`, the use case opens the transaction. This skill prefers a unit-of-work port so `tx` stays out of port signatures. |
 | T10 | Miłosz Smółka (Three Dots Labs), [Database transactions in Go with layered architecture](https://threedots.tech/post/database-transactions-in-go/) | Language-agnostic: prefer `update(id, updateFn)` so the repository owns the transaction and the logic stays in the domain; don't pass `tx` via context; don't make one repository per table. |
 | T11 | turkerdev, [fastify-type-provider-zod](https://github.com/turkerdev/fastify-type-provider-zod) | Set the validator and serializer compilers once; route plugins use the Zod type provider. 4.x supports Zod 3, 5.x needs Zod 4. |
@@ -84,7 +84,7 @@ the end say where a source describes a newer version than this repo pins.
 
 | Tool | This repo | The docs now show | Consequence |
 | --- | --- | --- | --- |
-| Drizzle | 0.38.4 | v1 (T8) | keep `relations()`, callback `where`, `drizzle-zod`; don't copy `defineRelations` or `drizzle-orm/zod` |
+| Drizzle | 0.45.3 | v1 (T8) | keep `relations()`, callback `where`, `drizzle-zod`; don't copy `defineRelations` or `drizzle-orm/zod` |
 | Zod | 3 | 4 | keep `fastify-type-provider-zod` on 4.x (T11) |
 | Vitest | 2 | 3+ | use the v2 config docs (T17) |
-| eslint-plugin-boundaries | not used | `boundaries/dependencies` replaces `element-types` | only relevant if ESLint is ever added (T14) |
+| eslint-plugin-boundaries | not used | `boundaries/dependencies` replaces `element-types` | ESLint runs (typescript-eslint), but boundaries stay with dependency-cruiser (T14) |

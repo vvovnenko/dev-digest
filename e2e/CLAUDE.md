@@ -25,6 +25,9 @@ npm run typecheck
   the AI `chat` command.
 - Read-only against seeded data (`acme/payments-api`, PR #482, seeded agents):
   no flow may write or trigger a model call.
+- Since wave 4 each flow runs in its own session (`--session <flow file>`), and flow 08
+  writes: it runs a review on the API's fake LLM (`DEVDIGEST_FAKE_LLM=1`) and sorts
+  last. This supersedes "one shared browser session" and "no flow may write" above.
 
 ## Naming
 
@@ -38,6 +41,9 @@ npm run typecheck
   redirects to the *first* repo, and a dev DB has several. Use `e2e:hermetic`.
 - A failing step surfaces as the raw agent-browser exit code plus
   `test-results/<flow>-fail.png` — read stderr, there is no matcher diff.
+- The runner now prints agent-browser's whole stderr and stdout under the `✗` line.
+- agent-browser 0.27 `find … click` doesn't scroll the shell's inner pane (flow 08 sets a
+  tall viewport); `find label` skips `aria-label` — use `find role button --name`.
 
 ## Do not touch
 

@@ -1,6 +1,10 @@
 # Skills
 
-Reusable AI skills that provide specialized knowledge and workflows. Canonical location is `.claude/skills/` with a symlink at `.cursor/skills/ → ../.claude/skills` for Cursor compatibility. Shared with the team via version control.
+Reusable AI skills that provide specialized knowledge and workflows. Canonical location is `.claude/skills/`. The repo has no `.cursor/`: for Cursor, create the symlink yourself (`mkdir -p .cursor && ln -s ../.claude/skills .cursor/skills`). Shared with the team via version control.
+
+`skills-lock.json` records the third-party skills installed with the `skills` CLI (`npx skills`), so
+`npx skills experimental_install` can restore them; skills written here are `local` and not in it —
+`npx skills list -p` (or `ls .claude/skills`) shows both.
 
 ## Catalog
 

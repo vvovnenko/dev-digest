@@ -32,52 +32,48 @@ Paths are relative to `server/src/` unless they start with `reviewer-core/`.
 | `modules/index.ts` | composition root | static plugin registry, no autoload |
 | `platform/errors.ts` | kernel | `AppError` hierarchy; imports nothing, so every ring may use it |
 | `vendor/shared/**` (`@devdigest/shared`) | kernel | Zod contracts + the shared ports in `adapters.ts`; imports only `zod` |
-| `platform/run-logger.ts`, `price-book.ts`, `resilience.ts`, `trace-builder.ts` | pure platform helpers | application code may import them |
-| `platform/grounding.ts`, `prompt.ts`, `structured.ts` | pure platform helpers | re-exports of `@devdigest/reviewer-core` |
-| `platform/jobs.ts`, `sse.ts`, `config.ts`, `prompts.ts` | platform infrastructure | DB writes, a process-wide singleton, `dotenv`, file reads — reach them through a port (`JobQueue`, `RunEvents`) |
-| `platform/model-router.ts` | platform | unused today; contains a raw NUL byte (see "Searching") |
-| `db/**` | persistence edge | `client.ts` (`Db`), `schema/*.ts`, `rows.ts`, seed, migrate; never imports modules or adapters |
+| `platform/run-logger.ts`, `price-book.ts`, `resilience.ts`, `code-scope.ts` | pure platform helpers | application code (and adapters) may import them; `code-scope.ts` holds the parser scope constants the ast-grep and depgraph adapters share with repo-intel |
+| `platform/structured.ts` | pure platform helper | re-exports `@devdigest/reviewer-core`'s structured-output helpers (the grounding and prompt shims were removed as dead code; tests import the engine) |
+| `platform/jobs.ts`, `sse.ts`, `config.ts` | platform infrastructure | DB writes, an in-memory run bus with timers (one per container), `dotenv` — reach them through a port (`JobQueue`, `RunEvents`); reviews wait in `container.reviewQueue` through the `ReviewQueue` port |
+| `db/**` | persistence edge | `client.ts` (`Db`, `Tx`, `DbExecutor`), `schema/*.ts`, `rows.ts`, seed, migrate, `migration-status.ts` (readiness); never imports modules or adapters |
 | `modules/<m>/routes.ts`, `modules/_shared/context.ts` | HTTP edge | `context.ts` may use `FastifyRequest` and `Container` types |
 | `modules/_shared/schemas.ts` | HTTP edge | shared Zod params (`IdParams`) |
 | `modules/<m>/repository.ts`, `repository/*.repo.ts` | persistence edge | `reviews/repository.ts` is a facade over `repository/{review,run,pull}.repo.ts` |
-| `modules/<m>/service.ts` | application | legacy services still take the `Container` (see deviations) |
-| `modules/<m>/helpers.ts`, `constants.ts`, `run-executor.ts`, `diff-loader.ts`, `findings.ts`, `feature-models.ts`, `repo-intel/pipeline/*` | application | every module file that is not routes/repository/domain/ports is checked as application code |
-| `modules/pulls/status.ts`, `repo-intel/pipeline/rank.ts` | application (pure) | already pure functions; the natural first `domain.ts` material |
-| `adapters/<tech>/*` | external edge | implement the shared ports; `git/diff-parser.ts` is a pure parser |
+| `modules/<m>/service.ts` | application | built from a `deps` object of ports (`<m>/ports.ts`) in every module but repo-intel, whose service still takes the `Container` (see deviations) |
+| `modules/<m>/helpers.ts`, `constants.ts`, `run-executor.ts`, `findings.ts`, `feature-models.ts`, `repo-intel/pipeline/*` | application | every module file that is not routes/repository/domain/ports is checked as application code |
+| `modules/<m>/ports.ts` | ports | `agents`, `polling`, `pulls`, `repos`, `reviews`, `settings`, `workspace`; polling's `PollStore` is satisfied structurally by the pulls repository |
+| `modules/{agents,polling,pulls,repos,reviews}/domain.ts` | domain | agent versioning rules and records; the poll's watermark and which PRs get fresh diff stats (`newestUpdate`, `statsTargets`); PR review status + PR-list mapping (`toPrMeta`, `toStoredDetail`); the stored records a review run works with |
+| `repo-intel/pipeline/rank.ts` | application | pure ranking math next to repository reads; the natural next `domain.ts` material |
+| `adapters/<tech>/*` | external edge | implement the shared ports; `git/diff-parser.ts` is a pure parser; `git/pr-diff.ts` (`PrDiffSource`) satisfies reviews' `DiffSource` (git diff, else stored patches); `auth/local.ts` takes an `IdentityStore` (the workspace repository) and the seed identity from the container |
 | `adapters/mocks.ts` | test doubles | deterministic mocks for the 7 shared ports, injected via `ContainerOverrides` |
-| `adapters/index.ts`, `modules/repo-intel/index.ts` | barrels | nothing imports them |
+| `adapters/llm/fake.ts` | external edge | `FakeReviewLlm`, the `LLMProvider` the container hands every agent under `DEVDIGEST_FAKE_LLM=1` (e2e); not a test mock |
 | `reviewer-core/src/**` | engine core | pure; `llm/openrouter.ts` is its one adapter |
 
-Ports live in three places today: `vendor/shared/adapters.ts` (`LLMProvider`, `Embedder`,
+Ports live in four places today: `vendor/shared/adapters.ts` (`LLMProvider`, `Embedder`,
 `GitHubClient`, `GitClient`, `CodeIndex`, `AuthProvider`, `SecretsProvider`), the adapter
-files (`adapters/depgraph/index.ts:27`, `adapters/tokenizer/index.ts:16`) and a module
-(`modules/repo-intel/types.ts:137`, the `RepoIntel` facade). New ports go in the consuming
+files (`adapters/depgraph/index.ts:27`, `adapters/tokenizer/index.ts:16`,
+`adapters/auth/local.ts:5`), a module (`modules/repo-intel/types.ts:137`, the `RepoIntel`
+facade) and the modules' `ports.ts` (e.g. `modules/reviews/ports.ts`: `ReviewStore`,
+`AgentLookup`, `RunEvents`, `DiffSource`, `RepoContext`). New ports go in the consuming
 module's `ports.ts`, or in `vendor/shared/adapters.ts` when several modules share them.
 
 ## Known deviations (don't copy them)
 
-All of these are in the baseline. When a task touches one of these files, don't add
-another instance. Fix the listed line if the fix is local and cheap; otherwise mention
-it and leave it.
+The baseline holds 25 violations, all in `modules/repo-intel/`, whose internals are
+do-not-touch (`server/CLAUDE.md`). The first four rows are those violations; the rest
+pass `pnpm arch` but are patterns to leave alone. When a task touches one of these files,
+don't add another instance.
 
 | Deviation | Where | When you touch it |
 | --- | --- | --- |
-| SQL in routes, incl. other modules' tables | `modules/pulls/routes.ts:3,6` (and `:126-153` reads reviews/findings/runs), `polling/routes.ts:3`, `settings/routes.ts:3`, `workspace/routes.ts:2` | put the new query in a module `repository.ts` behind a port; call it from a service |
-| Business rules in a route | `modules/pulls/routes.ts:85-111` (diff-stat backfill), `:113-191` (score/findings/cost roll-ups) | extract the decision into `domain.ts` when you change it |
-| Business rule in a repository | `modules/agents/repository.ts:112-146` (version bump + snapshot) | decision → `domain.ts`; the write pair → one transaction |
-| Service as service locator | `modules/reviews/service.ts:33-37`, `repos/service.ts:36-37`, `agents/service.ts:55`, `repo-intel/service.ts:105` | new methods take ports; a new service never takes `Container` |
-| Unused container getter | `platform/container.ts` `reviewRepo` (services build their own) | wire new repositories through getters and actually use them |
-| Drizzle row types in application code | `reviews/service.ts:4`, `reviews/run-executor.ts:5-6`, `reviews/diff-loader.ts:4`, `repos/helpers.ts:2`, `settings/feature-models.ts:8` | new code takes domain/contract types; map in the repository |
-| Row types imported from `./repository.js` | `agents/helpers.ts:3`, `reviews/helpers.ts:6`, `reviews/findings.ts:3` | same — also causes the `agents/helpers` ⇄ `agents/repository` cycle |
-| Repository returns API DTOs | `reviews/repository/run.repo.ts:40` (`listRunsForPull` → `RunSummary`) | fine when the shape is the contract; don't add snake_case ad-hoc shapes |
-| Cross-module deep import | `repos/service.ts:14` (`../repo-intel/constants.js`) | move shared constants to `@devdigest/shared` or pass them through a port |
-| Adapters importing a module | `adapters/astgrep/index.ts:25`, `adapters/depgraph/index.ts:20` (`repo-intel/constants`) | pass the constants in as constructor/function arguments |
-| Adapter importing db | `adapters/auth/local.ts:2-5` (Drizzle + `db/seed`) | a DB-backed port is a repository; don't extend this |
-| Application code using concrete adapters and `node:fs` | `repo-intel/service.ts`, `repo-intel/pipeline/{full,incremental,walk}.ts`, `reviews/diff-loader.ts:3` | repo-intel internals are do-not-touch (`server/CLAUDE.md`); intentional per `server/docs/architecture.md` |
+| Service as service locator | `modules/repo-intel/service.ts:104` (takes the `Container`, builds `RepoIntelRepository`) | new repo-intel code takes ports; a new service never takes `Container` |
+| Application code using concrete adapters and `node:fs` | `repo-intel/service.ts:29`, `repo-intel/pipeline/{full,incremental,walk}.ts` | intentional per `server/docs/architecture.md`; don't spread it to other modules |
+| Application code importing a repository | `repo-intel/{index,service}.ts`, `repo-intel/pipeline/{full,incremental,rank,repo-map}.ts` → `repo-intel/repository.ts` | new code declares a port and gets the repository from the composition root |
 | Container ⇄ repo-intel cycle | `platform/container.ts` ⇄ `repo-intel/service.ts` and `pipeline/{full,incremental}.ts` | breaks when repo-intel takes ports instead of the container |
-| Hand-parsed body | `reviews/routes.ts:32` (`RunRequest.parse(req.body ?? {})`) | move the schema into the route options when you change the route |
-| No transactions anywhere | `agents/repository.ts:85-146`, `reviews/repository/run.repo.ts`, `repo-intel/repository.ts`, `pulls/routes.ts` upserts | any write pair you add or change goes in one transaction |
-| Engine exports an adapter | `reviewer-core/src/index.ts` exports `OpenRouterProvider` | only `platform/container.ts` should use it |
+| Multi-write without a transaction | `repo-intel/repository.ts:247-248,352-366` (index delete + chunked insert). Done right: `reviews/repository/run.repo.ts:87,211`, `agents/repository.ts`, `pulls/repository.ts:230-231` | any write pair you add or change goes in one transaction |
+| Route driving the container | `repo-intel/routes.ts:40,55` (`container.repoIntel.getIndexState`, `container.jobs.enqueue`) | counted by `test/routes-container-ratchet.test.ts`; a new route calls a service |
+| Version arithmetic in a repository | `modules/agents/repository.ts:102`, `:229` (`version + 1`); the decisions are in `agents/domain.ts`, the writes in one transaction | move the next-version rule into `domain.ts` when you change it |
+| Repository returns API DTOs | `reviews/repository/run.repo.ts:46-51` (`listRunsForPull` → `RunSummary`) | fine when the shape is the contract; don't add snake_case ad-hoc shapes |
 
 ## Where other skills disagree with this repo
 
@@ -92,10 +88,9 @@ it and leave it.
 
 ## Searching this codebase
 
-- Three files contain a raw NUL byte, so shell `grep` treats them as binary and skips them:
-  `platform/model-router.ts`, `adapters/depgraph/index.ts`,
-  `modules/repo-intel/pipeline/repo-map.ts`. Use `grep -a` or the Grep tool.
+- Two files contain a raw NUL byte, so shell `grep` treats them as binary and skips them:
+  `adapters/depgraph/index.ts` and `modules/repo-intel/pipeline/repo-map.ts`. Use `grep -a` or the Grep tool.
   dependency-cruiser parses them normally.
 - Never search `server/clones/**`: it holds cloned repos, including a copy of this one.
 - To see a file's frozen debt:
-  `grep -n '"from": "src/modules/pulls/routes.ts"' server/.dependency-cruiser-known-violations.json`.
+  `grep -n '"from": "src/modules/repo-intel/service.ts"' server/.dependency-cruiser-known-violations.json`.

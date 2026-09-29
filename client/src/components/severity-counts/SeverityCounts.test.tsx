@@ -5,7 +5,8 @@
  * the portalled popover never reaches the parent (the PR list row navigates).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
+import { render, screen, cleanup, act, within } from "@testing-library/react";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../messages/en/prReview.json";
@@ -66,9 +67,15 @@ function renderCounts(props: Partial<SeverityCountsProps>, onParentClick = () =>
 
 const trigger = () => screen.getByLabelText(/findings?:/);
 
+/** Fake timers (the popover's open/close delays) and a user that advances them. */
+function setupUser(): UserEvent {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  return userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+}
+
 /** Hover the chips and let the open delay pass. */
-function hoverChips() {
-  fireEvent.mouseEnter(trigger());
+async function hoverChips(user: UserEvent) {
+  await user.hover(trigger());
   act(() => {
     vi.advanceTimersByTime(OPEN_DELAY_MS);
   });
@@ -106,11 +113,11 @@ describe("SeverityCounts — chips", () => {
 });
 
 describe("SeverityCounts — hover popover", () => {
-  it("opens after the hover delay with every finding, CRITICAL first", () => {
-    vi.useFakeTimers();
+  it("opens after the hover delay with every finding, CRITICAL first", async () => {
+    const user = setupUser();
     renderCounts({ findings: FINDINGS, repoFullName: "acme/payments-api", headSha: "abc123" });
 
-    fireEvent.mouseEnter(trigger());
+    await user.hover(trigger());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     act(() => {
       vi.advanceTimersByTime(OPEN_DELAY_MS);
@@ -131,65 +138,64 @@ describe("SeverityCounts — hover popover", () => {
     );
   });
 
-  it("strikes through a dismissed finding", () => {
-    vi.useFakeTimers();
+  it("strikes through a dismissed finding", async () => {
+    const user = setupUser();
     renderCounts({ findings: FINDINGS });
-    hoverChips();
+    await hoverChips(user);
     expect(screen.getByText("Lethal trifecta: untrusted input reaches exfil path")).toHaveStyle({
       textDecoration: "line-through",
     });
     expect(screen.getByText("Hardcoded Stripe secret key in commit")).toHaveStyle({ textDecoration: "none" });
   });
 
-  it("closes on Escape", () => {
-    vi.useFakeTimers();
+  it("closes on Escape", async () => {
+    const user = setupUser();
     renderCounts({ findings: FINDINGS });
-    hoverChips();
-    fireEvent.keyDown(window, { key: "Escape" });
+    await hoverChips(user);
+    await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("stays open while the pointer moves onto it, closes after leaving it", () => {
-    vi.useFakeTimers();
+  it("stays open while the pointer moves onto it, closes after leaving it", async () => {
+    const user = setupUser();
     renderCounts({ findings: FINDINGS });
-    hoverChips();
+    await hoverChips(user);
 
-    fireEvent.mouseLeave(trigger());
-    fireEvent.mouseEnter(screen.getByRole("dialog"));
+    await user.hover(screen.getByRole("dialog")); // leaves the chips, enters the popover
     act(() => {
       vi.advanceTimersByTime(CLOSE_GRACE_MS * 3);
     });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    fireEvent.mouseLeave(screen.getByRole("dialog"));
+    await user.unhover(screen.getByRole("dialog"));
     act(() => {
       vi.advanceTimersByTime(CLOSE_GRACE_MS);
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("asks the parent for data on hover and shows a skeleton until it arrives", () => {
-    vi.useFakeTimers();
+  it("asks the parent for data on hover and shows a skeleton until it arrives", async () => {
+    const user = setupUser();
     const onHoverStart = vi.fn();
     renderCounts({ findings: undefined, loading: true, onHoverStart });
-    hoverChips();
+    await hoverChips(user);
     expect(onHoverStart).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Loading findings…")).toBeInTheDocument();
   });
 
-  it("shows an error line when loading failed", () => {
-    vi.useFakeTimers();
+  it("shows an error line when loading failed", async () => {
+    const user = setupUser();
     renderCounts({ findings: undefined, error: true });
-    hoverChips();
+    await hoverChips(user);
     expect(screen.getByText("Couldn’t load findings")).toBeInTheDocument();
   });
 
-  it("a click inside the popover never reaches the parent (the PR list row)", () => {
-    vi.useFakeTimers();
+  it("a click inside the popover never reaches the parent (the PR list row)", async () => {
+    const user = setupUser();
     const onParentClick = vi.fn();
     renderCounts({ findings: FINDINGS }, onParentClick);
-    hoverChips();
-    fireEvent.click(screen.getByText("Retry-After header omitted on 429"));
+    await hoverChips(user);
+    await user.click(screen.getByText("Retry-After header omitted on 429"));
     expect(onParentClick).not.toHaveBeenCalled();
   });
 });

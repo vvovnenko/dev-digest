@@ -1,6 +1,8 @@
 import type {
+  CiFailOn,
   Finding,
   LLMProvider,
+  LLMUsage,
   PromptAssembly,
   Review,
   RunEventKind,
@@ -9,6 +11,16 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
+import {
+  DiffTooLargeError,
+  LlmCallError,
+  NO_USAGE,
+  NothingToReviewError,
+  UNKNOWN_USAGE,
+  addUsage,
+  usageOf,
+} from '../llm/errors.js';
+import { verdictFromFindings } from '../output/to-review.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
@@ -30,6 +42,12 @@ import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 export const DEFAULT_MAP_THRESHOLD_LINES = 400;
 /** Default structured-output reprompt retries (matches REVIEW_MAX_RETRIES). */
 export const DEFAULT_REVIEW_MAX_RETRIES = 2;
+/** Output cap per call: a review is a JSON list of findings; this bounds a runaway answer's cost. */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+/** Above this the diff is refused before any call — it can't be reviewed within a model's context. */
+export const DEFAULT_MAX_DIFF_CHARS = 2_000_000;
+/** A single pass over more than this goes per file instead (when there is more than one file). */
+export const DEFAULT_SINGLE_PASS_MAX_CHARS = 400_000;
 
 export type ReviewStrategy = 'auto' | 'single-pass' | 'map-reduce';
 export type ReviewMode = 'single-pass' | 'map-reduce';
@@ -71,12 +89,24 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
-  /** Task framing line, e.g. "Review PR #482 …". */
+  /** PR title + author (untrusted; rendered in their own wrapped block, never in `task`). */
+  pr?: { title: string; author: string };
+  /** Task framing line, e.g. "Review PR #482". Trusted: no PR text in it. */
   task?: string;
   /** Override the structured-output retry budget. */
   maxRetries?: number;
   /** Override the map-reduce line threshold. */
   mapThresholdLines?: number;
+  /** Agent gate that turns the grounded findings into the verdict (default 'critical'). */
+  failOn?: CiFailOn;
+  /** Output-token cap per LLM call (default DEFAULT_MAX_OUTPUT_TOKENS). */
+  maxTokens?: number;
+  /** Refuse a larger diff before any call (default DEFAULT_MAX_DIFF_CHARS). */
+  maxDiffChars?: number;
+  /** Review per file instead of in one pass above this size (default DEFAULT_SINGLE_PASS_MAX_CHARS). */
+  singlePassMaxChars?: number;
+  /** Aborts the in-flight LLM call (e.g. the run was cancelled). */
+  signal?: AbortSignal;
   /**
    * OpenRouter session id — forwarded on every LLM call so all chunks of this
    * review group into one session in the OpenRouter dashboard.
@@ -112,18 +142,33 @@ export interface ReviewOutcome {
   raw: string;
 }
 
-function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: number): ReviewMode {
+function selectMode(
+  strategy: ReviewStrategy,
+  diff: UnifiedDiff,
+  threshold: number,
+  singlePassMaxChars: number,
+): ReviewMode {
+  const multiFile = diff.files.length > 1;
+  // Whatever the strategy, a single pass must fit the model's context.
+  if (multiFile && diff.raw.length > singlePassMaxChars) return 'map-reduce';
   if (strategy === 'single-pass') return 'single-pass';
-  if (strategy === 'map-reduce') return diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+  if (strategy === 'map-reduce') return multiFile ? 'map-reduce' : 'single-pass';
   // auto: map-reduce only when the diff is both large AND multi-file (else 1 call).
   const totalLines = diff.files.reduce((n, f) => n + f.additions + f.deletions, 0);
-  return totalLines > threshold && diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+  return totalLines > threshold && multiFile ? 'map-reduce' : 'single-pass';
 }
 
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
-  const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
+  const maxDiffChars = input.maxDiffChars ?? DEFAULT_MAX_DIFF_CHARS;
+  if (input.diff.raw.length > maxDiffChars) throw new DiffTooLargeError(input.diff.raw.length, maxDiffChars);
+  const mode = selectMode(
+    input.strategy ?? 'auto',
+    input.diff,
+    threshold,
+    input.singlePassMaxChars ?? DEFAULT_SINGLE_PASS_MAX_CHARS,
+  );
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
 
@@ -135,6 +180,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    pr: input.pr,
     task: input.task,
   };
 
@@ -154,14 +200,16 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   );
 
   const partials: Review[] = [];
-  let tokensIn = 0;
-  let tokensOut = 0;
-  let costUsd: number | null = 0;
+  let spent: LLMUsage = NO_USAGE;
   const raws: string[] = [];
 
   for (const chunk of chunks) {
     // Cancellation checkpoint — stop before the next (expensive) LLM call.
     input.checkCancelled?.();
+    if (!chunk.diffText.trim()) {
+      emit('info', `${chunk.label}: no diff text for this file — skipped`);
+      continue;
+    }
     // 'map:' prefix only for the map-reduce path (one call per file). In
     // single-pass there is exactly one chunk (the whole diff) — don't mislabel it.
     emit(
@@ -171,22 +219,31 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText });
     if (mode === 'single-pass') assembly = a.assembly;
-    const res = await input.llm.completeStructured<Review>({
-      model: input.model,
-      schema: ReviewSchema,
-      schemaName: 'Review',
-      messages: a.messages,
-      maxRetries,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    });
-    tokensIn += res.tokensIn;
-    tokensOut += res.tokensOut;
-    costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
+    let res;
+    try {
+      res = await input.llm.completeStructured<Review>({
+        model: input.model,
+        schema: ReviewSchema,
+        schemaName: 'Review',
+        messages: a.messages,
+        maxRetries,
+        maxTokens: input.maxTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    } catch (err) {
+      // Earlier chunks and this call's attempts were billed: carry the total. A
+      // provider that reported nothing makes the cost unknown, not zero.
+      const total = addUsage(spent, usageOf(err) ?? UNKNOWN_USAGE);
+      throw new LlmCallError(`${chunk.label}: ${(err as Error).message}`, total, { cause: err });
+    }
+    spent = addUsage(spent, { tokensIn: res.tokensIn, tokensOut: res.tokensOut, costUsd: res.costUsd });
     raws.push(res.raw);
     partials.push(res.data);
     emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
   }
 
+  if (partials.length === 0) throw new NothingToReviewError();
   const merged = reduceReviews(partials);
   emit(
     'result',
@@ -201,19 +258,23 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Score AND verdict are derived from the findings that SURVIVED grounding (not
+  // the model's self-reported values, and not the pre-grounding set) so the score,
+  // the verdict, the findings list and the GitHub event always agree.
+  const verdict = verdictFromFindings(ground.kept, input.failOn ?? 'critical');
+  if (verdict !== merged.verdict) {
+    emit('info', `verdict ${merged.verdict} → ${verdict} (derived from the grounded findings)`);
+  }
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: { ...merged, verdict, findings: ground.kept, score: scoreFromFindings(ground.kept) },
     grounding,
     dropped: ground.dropped,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),
-    tokensIn,
-    tokensOut,
-    costUsd,
+    tokensIn: spent.tokensIn,
+    tokensOut: spent.tokensOut,
+    costUsd: spent.costUsd,
     raw: raws.join('\n---\n'),
   };
 }

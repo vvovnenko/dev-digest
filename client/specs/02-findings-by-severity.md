@@ -10,7 +10,7 @@ UI summary: one shared `src/components/severity-counts/`. It renders chips like
 `ⓘ N FINDINGS`, that lists every finding of that review. The chips appear in two
 places:
 
-- the Agent runs Timeline, in a `done` run's row, in place of "N finding(s)";
+- the Agent runs Timeline, in a `done` run's row, in place of "N findings";
 - a new `FINDINGS` column in the PR list, for the latest review, whose findings
   load on the first hover.
 

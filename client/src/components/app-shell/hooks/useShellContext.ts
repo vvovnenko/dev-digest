@@ -25,7 +25,9 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   const router = useRouter();
   const { theme, toggle } = useTheme();
   const { repoId, repos, activeRepo, setRepoId } = useActiveRepo();
-  const { data: pulls } = usePulls(repoId);
+  // The badge polls only where PR statuses are on screen: each GET makes the
+  // server sync with GitHub. Elsewhere it refreshes on focus and navigation.
+  const { data: pulls } = usePulls(repoId, { poll: pathname.startsWith("/repos/") });
   const deleteRepo = useDeleteRepo();
 
   const onSelectRepo = React.useCallback(

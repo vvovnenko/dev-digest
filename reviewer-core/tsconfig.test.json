@@ -1,0 +1,6 @@
+{
+  // src + tests + tool configs: `typecheck` (and lint) run this, so tests are type-checked too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}

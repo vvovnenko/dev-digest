@@ -1,47 +1,65 @@
 import { type Repo } from '@devdigest/shared';
-import * as t from '../../db/schema.js';
 import { AppError } from '../../platform/errors.js';
-import {
-  GITHUB_URL_REGEX,
-  GIT_TOKEN_USERNAME,
-  GITHUB_HTTPS_HOST,
-} from './constants.js';
+import { GITHUB_HOST, GITHUB_SSH_URL_REGEX, REPO_SEGMENT_REGEX } from './constants.js';
+import type { RepoRecord } from './domain.js';
 
 /**
  * F1 — repos pure helpers (extracted from routes.ts; no behaviour change).
  * Pure functions only — no I/O, no DB, no container.
  */
 
-/** Parse `owner`/`name` from a GitHub URL (https or ssh form). */
+/**
+ * Parse `owner`/`name` from a GitHub repo URL: `https://github.com/owner/repo(.git)(/)`
+ * or `git@github.com:owner/repo(.git)`. Anything else is rejected — another host or
+ * protocol, credentials, a port, a query, extra path segments, `.`/`..` — because the
+ * segments become a filesystem path and git never sees the user's URL: the clone URL
+ * is rebuilt from them (`canonicalCloneUrl`).
+ */
 export function parseRepoUrl(url: string): { owner: string; name: string } {
-  // https://github.com/owner/repo(.git)  |  git@github.com:owner/repo.git
-  const match = url.match(GITHUB_URL_REGEX);
-  if (!match?.[1] || !match[2]) {
-    throw new AppError('invalid_repo_url', `Could not parse owner/repo from '${url}'`, 400);
+  const segments = githubPathSegments(url.trim());
+  const owner = segments?.[0];
+  const name = segments?.[1]?.replace(/\.git$/, '');
+  if (
+    segments?.length !== 2 ||
+    !owner ||
+    !name ||
+    !REPO_SEGMENT_REGEX.test(owner) ||
+    !REPO_SEGMENT_REGEX.test(name)
+  ) {
+    throw new AppError('invalid_repo_url', `Could not parse owner/repo from '${url}'`, 422);
   }
-  return { owner: match[1], name: match[2] };
+  return { owner, name };
 }
 
-/**
- * Embed a token into an https github.com URL so private clones authenticate
- * non-interactively. SSH/non-GitHub URLs are left untouched.
- */
-export function withGitHubToken(url: string, token: string): string {
+/** The path segments of a github.com URL, or null when it isn't one we accept. */
+function githubPathSegments(url: string): string[] | null {
+  const ssh = url.match(GITHUB_SSH_URL_REGEX);
+  if (ssh) return [ssh[1]!, ssh[2]!];
+  let u: URL;
   try {
-    const u = new URL(url);
-    if (u.protocol === 'https:' && u.hostname === GITHUB_HTTPS_HOST) {
-      u.username = GIT_TOKEN_USERNAME;
-      u.password = token;
-      return u.toString();
-    }
+    u = new URL(url);
   } catch {
-    /* non-URL (e.g. git@github.com:...) — leave as-is */
+    return null;
   }
-  return url;
+  const plain =
+    u.protocol === 'https:' &&
+    u.hostname === GITHUB_HOST &&
+    !u.port &&
+    !u.username &&
+    !u.password &&
+    !u.search &&
+    !u.hash;
+  // URL has already resolved `.`/`..` and percent-encoded dots in the pathname.
+  return plain ? u.pathname.replace(/^\/+|\/+$/g, '').split('/') : null;
+}
+
+/** The only URL a repo is cloned from — never the user's input, never with a token. */
+export function canonicalCloneUrl(owner: string, name: string): string {
+  return `https://${GITHUB_HOST}/${owner}/${name}.git`;
 }
 
 /** Map a persisted repo row to the API `Repo` DTO. */
-export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {
+export function toRepoDto(row: RepoRecord): Repo {
   return {
     id: row.id,
     workspace_id: row.workspaceId,

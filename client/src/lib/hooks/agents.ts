@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentCreate, AgentUpdate, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -20,16 +20,8 @@ export function useAgent(id: string | null | undefined) {
   });
 }
 
-export interface CreateAgentInput {
-  name: string;
-  description?: string;
-  provider: Provider;
-  model: string;
-  system_prompt: string;
-  output_schema?: unknown;
-  strategy?: ReviewStrategy;
-  enabled?: boolean;
-}
+/** Body of POST /agents (the shared contract). */
+export type CreateAgentInput = AgentCreate;
 
 export function useCreateAgent() {
   const qc = useQueryClient();
@@ -41,21 +33,8 @@ export function useCreateAgent() {
 
 export interface UpdateAgentInput {
   id: string;
-  patch: Partial<
-    Pick<
-      Agent,
-      | "name"
-      | "description"
-      | "provider"
-      | "model"
-      | "system_prompt"
-      | "output_schema"
-      | "strategy"
-      | "ci_fail_on"
-      | "repo_intel"
-      | "enabled"
-    >
-  >;
+  /** Body of PUT /agents/:id (the shared contract). */
+  patch: AgentUpdate;
 }
 
 export function useUpdateAgent() {
@@ -63,7 +42,7 @@ export function useUpdateAgent() {
   return useMutation({
     mutationFn: ({ id, patch }: UpdateAgentInput) => api.put<Agent>(`/agents/${id}`, patch),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["agents"] });
+      void qc.invalidateQueries({ queryKey: ["agents"] });
       qc.setQueryData(["agent", data.id], data);
     },
   });
@@ -74,7 +53,7 @@ export function useDeleteAgent() {
   return useMutation({
     mutationFn: (id: string) => api.del<{ ok: boolean }>(`/agents/${id}`),
     onSuccess: (_d, id) => {
-      qc.invalidateQueries({ queryKey: ["agents"] });
+      void qc.invalidateQueries({ queryKey: ["agents"] });
       qc.removeQueries({ queryKey: ["agent", id] });
     },
   });

@@ -191,6 +191,25 @@ export const Agent = z.object({
 });
 export type Agent = z.infer<typeof Agent>;
 
+/** Body of `POST /agents`. */
+export const AgentCreate = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  provider: Provider,
+  model: z.string().min(1),
+  system_prompt: z.string().min(1),
+  output_schema: z.unknown().optional(),
+  strategy: ReviewStrategy.optional(),
+  ci_fail_on: CiFailOn.optional(),
+  repo_intel: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+export type AgentCreate = z.infer<typeof AgentCreate>;
+
+/** Body of `PUT /agents/:id`: any subset of the editable fields (toggling `enabled` included). */
+export const AgentUpdate = AgentCreate.partial();
+export type AgentUpdate = z.infer<typeof AgentUpdate>;
+
 export const AgentSkillLink = z.object({
   agent_id: z.string(),
   skill_id: z.string(),

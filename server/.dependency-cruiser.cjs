@@ -42,7 +42,7 @@ const DB = '^src/db/';
 const ADAPTERS = '^src/adapters/';
 const ROOT = '^src/(?:app|server)\\.ts$';
 /** platform files that do I/O or wire things — application code gets them through ports. */
-const PLATFORM_INFRA = '^src/platform/(?:container|jobs|config|sse|prompts)\\.ts$';
+const PLATFORM_INFRA = '^src/platform/(?:container|jobs|config|sse)\\.ts$';
 const KERNEL = ['^src/vendor/shared/', '^src/platform/errors\\.ts$'];
 
 const MODULE = '^src/modules/[^/]+/';
@@ -163,11 +163,26 @@ module.exports = {
       name: 'onion-core-public-api-only',
       severity: 'error',
       comment:
-        'server uses reviewer-core only through @devdigest/reviewer-core (reviewer-core/src/index.ts). ' +
+        'server uses reviewer-core only through @devdigest/reviewer-core (reviewer-core/src/index.ts, the ' +
+        'pure engine) and its one adapter, @devdigest/reviewer-core/llm/openrouter. ' +
         SKILL +
         ' → reviewer-core.',
       from: { path: '^src/' },
-      to: { path: '^\\.\\./reviewer-core/', pathNot: '^\\.\\./reviewer-core/src/index\\.ts$' },
+      to: {
+        path: '^\\.\\./reviewer-core/',
+        pathNot: '^\\.\\./reviewer-core/src/(index|llm/openrouter)\\.ts$',
+      },
+    },
+    {
+      name: 'onion-core-provider-in-root-only',
+      severity: 'error',
+      comment:
+        "reviewer-core's network-bound OpenRouterProvider is built only in the composition root " +
+        '(platform/container.ts); everything else gets an LLMProvider port. ' +
+        SKILL +
+        ' → reviewer-core.',
+      from: { path: '^src/', pathNot: '^src/platform/container\\.ts$' },
+      to: { path: '^\\.\\./reviewer-core/src/llm/openrouter\\.ts$' },
     },
     {
       name: 'core-no-server-src',
@@ -216,6 +231,32 @@ module.exports = {
         ' → reviewer-core.',
       from: { path: CORE, pathNot: '^\\.\\./reviewer-core/src/llm/openrouter\\.ts$' },
       to: { path: npm('openai'), pathNot: '(?:^|/)node_modules/openai/helpers/|^openai/helpers/' },
+    },
+    {
+      name: 'no-orphans',
+      severity: 'error',
+      comment: 'A file that imports nothing and that nothing imports is dead code: delete it or wire it in.',
+      from: { orphan: true, pathNot: ['\\.d\\.ts$'] },
+      to: {},
+    },
+    {
+      name: 'no-unreachable-from-entry',
+      severity: 'error',
+      comment:
+        'Nothing the API or the db scripts run reaches this file, so it is dead code (tests are not ' +
+        'cruised). Delete it, or wire it in. Exempt: the entry points themselves, the test doubles in ' +
+        'adapters/mocks.ts, and settings/feature-models.ts, pre-staged for later lessons and covered ' +
+        'by test/settings-models.it.test.ts.',
+      from: { path: '^src/(?:server|db/migrate|db/seed)\\.ts$' },
+      to: {
+        path: '^(?:src/|\\.\\./reviewer-core/src/)',
+        pathNot: [
+          '^src/(?:server|db/migrate|db/seed)\\.ts$',
+          '^src/adapters/mocks\\.ts$',
+          '^src/modules/settings/feature-models\\.ts$',
+        ],
+        reachable: false,
+      },
     },
     {
       name: 'no-circular',

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
@@ -16,6 +16,25 @@ describe('routes (no DB)', () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: 'ok' });
+    await app.close();
+  });
+
+  it('listens on loopback by default and rejects a foreign Host (DNS rebinding)', async () => {
+    expect(config.apiHost).toBe('localhost');
+    const app = await buildApp({ config });
+    const foreign = await app.inject({ method: 'GET', url: '/health', headers: { host: 'evil.example:3001' } });
+    expect(foreign.statusCode).toBe(403);
+    expect(foreign.json().error.code).toBe('forbidden_host');
+    const local = await app.inject({ method: 'GET', url: '/health', headers: { host: '127.0.0.1:3001' } });
+    expect(local.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('accepts any Host when exposed on purpose with API_HOST=0.0.0.0', async () => {
+    const exposed = loadConfig({ ...process.env, NODE_ENV: 'test', API_HOST: '0.0.0.0' } as NodeJS.ProcessEnv);
+    const app = await buildApp({ config: exposed });
+    const res = await app.inject({ method: 'GET', url: '/health', headers: { host: 'devbox.lan:3001' } });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 
