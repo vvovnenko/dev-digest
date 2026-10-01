@@ -31,12 +31,18 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 | server-integration | `server/` | integration (real Postgres) | vitest | `server-integration.yml` | **yes** |
 | reviewer-core | `reviewer-core/` | unit (engine) | vitest | `reviewer-core.yml` | no |
 | e2e web | `e2e/` | browser e2e (deterministic) | agent-browser + `run.ts` | `e2e-web.yml` | yes (stack) |
+| pr-self-review | whole repo | PR gate checks (no model) + the gate's own tests | `checks.mjs --ci`, `node --test` | `pr-self-review.yml` | no |
 
 ## What each suite covers
 
 **client** — components render and react to interaction (React Testing Library + jsdom)
 over `vi.mock`ed hook modules; data-layer tests mock `src/lib/api.ts` under a real QueryClient.
 No API, DB, or browser. Covers the PR-review surface (list, diff, findings, run controls) and the agent editor.
+
+**pr-self-review** — the deterministic half of the local `/pr-self-review` gate on every
+PR to `main`: secrets in every PR commit, do-not-touch paths, migrations, the vendor/shared
+mirror, INSIGHTS append-only, the onion baseline and ratchets
+(`.claude/skills/pr-self-review/README.md`). Its script tests build throwaway git repos.
 
 **server-unit** — the DB-free majority: adapters, prompt assembly, grounding,
 repo-intel ranking & indexing, pricing, route smoke. Both jobs run on Ubuntu only

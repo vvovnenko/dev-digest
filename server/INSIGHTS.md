@@ -43,6 +43,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 
 - **2026-09-23** — `grep` treats `src/adapters/depgraph/index.ts` as binary (`file` reports it as `data`), so `grep -r` and `grep -I` silently skip it → search it with `grep -a` or the Grep tool. Evidence: `src/adapters/depgraph/index.ts:27`.
   - **2026-09-23** — Line evidence: the byte that makes it binary is a literal NUL inside the edge key at `src/adapters/depgraph/index.ts:93` (``const key = `${from}\0${to}` `` with a raw `\0`); `:27` is just `export interface DepGraph {`. Evidence: `src/adapters/depgraph/index.ts:93`.
+  - **2026-10-01** — git also treats it as binary: a plain `git diff` prints "Binary files … differ" with no hunks, so diff-based tooling (a self-review, a hunk-grounding gate) silently skips it → use `git diff -a` (`--text`) to get hunks; `--numstat` still prints `-	-` for it even with `-a`, so count lines from the hunks instead. Evidence: `src/adapters/depgraph/index.ts:93`
 - **2026-09-27** — dependency-cruiser's `options.exclude.path` also matches *resolved* `node_modules` paths: an unanchored `dist/` silently dropped every import of `p-queue` and `simple-git` (their entry is `node_modules/<pkg>/dist/…`), so rules on them could never fire and no warning was printed → anchor excludes (`^dist/`, `^clones/`) and check the npm targets in `-T json` after changing them. Evidence: `.dependency-cruiser.cjs:245`
 - **2026-09-27** — The local pnpm 12.5.1 installs `server/node_modules` *isolated* (`node_modules/p-queue` → `.pnpm/p-queue@8.1.1/…`; `.modules.yaml` says `nodeLinker: isolated`) although `.npmrc` asks for `node-linker=hoisted`, which CI's pnpm 10 applies → any tool that records resolved package paths differs between a laptop and CI; dependency-cruiser needs `preserveSymlinks: true` so its baseline keys match. Evidence: `.npmrc:1`, `.dependency-cruiser.cjs:252`
 - **2026-09-28** — simple-git 3.36's `simpleGit({ config: [...] })` turns each entry into a per-command `-c`, and its unsafe-operations plugin accepts `http.https://github.com/.extraheader=AUTHORIZATION: basic …` — git sees it, `.git/config` never gets it (checked with a probe repo) → authenticate git with that header per command, never with a token in the remote URL (git stores the URL verbatim). Evidence: `src/adapters/git/simple-git.ts:73`, `src/adapters/git/credentials.ts:12`
@@ -110,6 +111,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-29** — Wave 5 (README, review-api contract comment, review-flow spec): +4 (Doc drift fix notes)
 - **2026-09-29** — Wave 6 (fastify + drizzle 0.45 bumps, numeric money, exactOptionalPropertyTypes, dead code + no-orphans/no-unreachable, shared test Postgres, default branch, read-only PR list + poll import, review queue, response schemas, paging, trace retention, loopback Postgres): +4 (Tool & library notes)
 - **2026-09-29** — Incremental PR poll (watermark, migration 0014) + batched diff stats (GraphQL, REST fallback): +1 (Recurring errors & fixes)
+- **2026-10-01** — PR Self Review skill plan (no code): +1 (Tool & library notes, nuance)
 
 ## Open questions
 

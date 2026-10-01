@@ -23,6 +23,12 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Workflow | Read a module's INSIGHTS.md before work; append new, non-obvious insights at the end (append-only script) |
+| [pr-self-review](pr-self-review/SKILL.md) | Workflow | Before a PR: routes each changed file to the skills that own it, runs deterministic checks, verifies every CRITICAL and writes a verdict; user-invoked only, no hook on `git push` (v1.2.0) |
+
+`pr-self-review` runs only by hand: no hook on `git push` calls or enforces it. An optional push
+gate (`node .claude/skills/pr-self-review/scripts/install-hooks.mjs` for git's pre-push hook,
+plus the Claude hooks in its README) refuses a push without a PASS verdict. A new skill folder needs a
+routing decision in `pr-self-review/routing.json` (or an `ignored` entry), or self-reviews stop.
 
 ## What Are Skills?
 
