@@ -7,6 +7,8 @@ import type {
   Embedder,
   LLMProvider,
   ConnTestProvider,
+  FeatureModelChoice,
+  FeatureModelId,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
@@ -32,6 +34,8 @@ import { SkillsRepository } from '../modules/skills/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import { PullsRepository } from '../modules/pulls/repository.js';
 import { SettingsRepository } from '../modules/settings/repository.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
+import { ConventionsRepository } from '../modules/conventions/repository.js';
 import { WorkspaceRepository } from '../modules/workspace/repository.js';
 import { RepoRepository } from '../modules/repos/repository.js';
 import type { RepoIndexing } from '../modules/repos/ports.js';
@@ -93,6 +97,7 @@ export class Container {
   private _settingsRepo?: SettingsRepository;
   private _workspaceRepo?: WorkspaceRepository;
   private _reposRepo?: RepoRepository;
+  private _conventionsRepo?: ConventionsRepository;
   private _prDiffs?: PrDiffSource;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
@@ -158,6 +163,15 @@ export class Container {
 
   get reposRepo(): RepoRepository {
     return (this._reposRepo ??= new RepoRepository(this.db));
+  }
+
+  get conventionsRepo(): ConventionsRepository {
+    return (this._conventionsRepo ??= new ConventionsRepository(this.db));
+  }
+
+  /** The provider + model a system LLM feature runs on: the workspace's Settings choice, else the registry default. */
+  featureModel(workspaceId: string, id: FeatureModelId): Promise<FeatureModelChoice> {
+    return resolveFeatureModel(this.settingsRepo, workspaceId, id);
   }
 
   /** Repos asks repo-intel to index a clone through its own job kinds, which only this root knows. */

@@ -55,6 +55,11 @@ d('Settings: feature models + secrets status (Testcontainers pg)', () => {
       provider: 'openai',
       model: 'gpt-4.1',
     });
+    // The container's wiring (conventions' model port) resolves the same way.
+    expect(await app.container.featureModel(workspaceId, 'conventions')).toEqual({
+      provider: 'openrouter',
+      model: 'deepseek/deepseek-v4-flash',
+    });
 
     await app.close();
   });

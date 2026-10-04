@@ -11,6 +11,7 @@ import {
   Agent,
   AgentSkillLink,
   AgentVersion,
+  ConventionsState,
   PrDetail,
   PrMeta,
   Repo,
@@ -107,5 +108,14 @@ d('API responses match the shared contracts (Testcontainers pg)', () => {
     const agents = await read('/agents', z.array(Agent));
     expect(agents.every((a) => typeof a.skill_count === 'number')).toBe(true);
     await read(`/agents/${agents[0]!.id}/skills`, z.array(AgentSkillLink));
+  });
+
+  it("a repo's conventions (no scan yet)", async () => {
+    const [repo] = await read('/repos', z.array(Repo));
+    expect(await read(`/repos/${repo!.id}/conventions`, ConventionsState)).toEqual({
+      scan: null,
+      latest_scan: null,
+      candidates: [],
+    });
   });
 });

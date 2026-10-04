@@ -9,22 +9,22 @@ its URL params, and the visible copy the e2e flows depend on. The route ↔ endp
 [`01-run-cost-badge.md`](./01-run-cost-badge.md), [`02-findings-by-severity.md`](./02-findings-by-severity.md),
 [`03-skills.md`](./03-skills.md).
 The flows are described in [`../../e2e/specs/flows.md`](../../e2e/specs/flows.md). Paths are relative to
-`client/`; `PR/` = `src/app/(shell)/repos/[repoId]/pulls/[number]/_components/`. There are nine routes and no
+`client/`; `PR/` = `src/app/(shell)/repos/[repoId]/pulls/[number]/_components/`. There are ten routes and no
 others: no `/showcase` (the gallery renders only in `src/test/smoke.test.tsx:4`), no `/settings` or
 `/repos/:repoId` index — an unknown URL renders `src/app/not-found.tsx:9-23` ("Page not found", "Go to DevDigest").
 
 Every route except `/onboarding` lives in the `src/app/(shell)/` route group: its layout mounts `AppShell` once
 (`src/app/(shell)/layout.tsx:7-9`) and each page sets its breadcrumb with `useShellCrumb`. Every `page.tsx` is a
-thin server file: `generateMetadata` sets the tab title from `messages/en/shell.json:46-58` (template
+thin server file: `generateMetadata` sets the tab title from `messages/en/shell.json:46-59` (template
 "<page> · DevDigest", `src/app/layout.tsx:13-17`) and the page renders one client view. A page that throws while
 rendering shows `src/app/(shell)/error.tsx:10-16` inside the shell. The sidebar comes from the vendored `NAV`
-(`src/vendor/ui/nav.ts:21-35`): WORKSPACE → Pull Requests; SKILLS LAB → Skills (`g s`), Agents (`g a`); Settings
-at the bottom.
+(`src/vendor/ui/nav.ts:21-36`): WORKSPACE → Pull Requests; SKILLS LAB → Skills (`g s`), Agents (`g a`),
+Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
 
 ## Routes
 
 ### `/`
-- `HomeView` (`src/app/(shell)/page.tsx:11-13`): "Welcome to DevDigest" (`HomeView.tsx:26`, `shell.json:61`);
+- `HomeView` (`src/app/(shell)/page.tsx:11-13`): "Welcome to DevDigest" (`HomeView.tsx:26`, `shell.json:62`);
   `useRepos` → `GET /repos` (`src/lib/hooks/core.ts:69-74`).
 - ≥ 1 repo: `router.replace` to `/repos/<repos[0].id>/pulls` — the API's first repo, not the stored active
   repo (`HomeView.tsx:19-23`); meanwhile an "Open <full_name>" button (`:42-46`). Loading → skeletons
@@ -32,7 +32,7 @@ at the bottom.
 
 ### `/onboarding`
 - Full-screen `AddRepoView`, outside the shell (`src/app/onboarding/page.tsx:12-14`): "Add a repository", field
-  "Repository URL" (`AddRepoView.tsx:58,76`, `shell.json:79,81`).
+  "Repository URL" (`AddRepoView.tsx:58,76`, `shell.json:80,82`).
 - Button or Enter (`AddRepoView.tsx:82-84,100-108`) → `useAddRepo` → `POST /repos {url}`, invalidates
   `["repos"]` (`core.ts:76-82`); "Cloning…" while pending (`:107`). Success → `/repos/<id>/pulls`
   (`:37-38`); failure → inline error plus the global toast (`:39-41,88-93`). Esc, × and Cancel → `/`
@@ -134,7 +134,7 @@ at the bottom.
   (`SkillsListView.tsx:45-58`).
 - **Add Skill ▾** (`_components/AddSkillMenu/AddSkillMenu.tsx:30-33`): "Create from scratch" opens
   `CreateSkillModal` (name, description, type, body → `POST /skills` → `/skills/:id?tab=preview`,
-  `CreateSkillModal.tsx:37-49`); "Import file…" opens `ImportSkillDrawer`: a `.md` / `.markdown` / `.zip` up to
+  `CreateSkillModal.tsx:36-48`); "Import file…" opens `ImportSkillDrawer`: a `.md` / `.markdown` / `.zip` up to
   512 KiB, checked before any request (`ImportSkillDrawer/constants.ts:2-5`), sent as base64 to
   `POST /skills/import/preview`, then a preview with a trust warning, editable name / description / type, the
   warnings, the skipped files with their reasons and the rendered block (images as labels); only **Save skill**
@@ -150,11 +150,11 @@ at the bottom.
 - **Config** stays mounted while another tab shows (`SkillEditor/SkillEditor.tsx:25-27`): enabled, name,
   description with a directive hint (the "When to apply" line), type, and the body in a line-numbered editor
   headed `<name>.md`, "unsaved" and "{n} tokens" — `ceil(chars / 4)` of the rendered block
-  (`ConfigTab/ConfigTab.tsx:34-40,101-110`). Save sends only the fields that differ, `PUT /skills/:id`; Cancel
+  (`ConfigTab/ConfigTab.tsx:33-39,100-109`). Save sends only the fields that differ, `PUT /skills/:id`; Cancel
   drops the draft (`:48-70,111-122`).
 - **Preview**: "Rendered as the reviewing agent receives it." and the block `### name` / `When to apply:` /
-  body, the same format as the engine (`src/app/(shell)/skills/helpers.ts:15-19`), with its tokens
-  (`PreviewTab/PreviewTab.tsx:12-29`).
+  body, the same format as the engine (`src/lib/skills.ts:26-30`), with its tokens
+  (`PreviewTab/PreviewTab.tsx:13-30`).
 - **Versions**: `useSkillVersions` → `GET /skills/:id/versions`, newest first: `vN`, note, date, "Current" or
   **Diff** (a line diff against the current skill, in a modal) and **Restore** (confirm →
   `POST /skills/:id/versions/:version/restore`, a new version) (`VersionsTab/VersionsTab.tsx:23-27,43-78`).
@@ -162,9 +162,35 @@ at the bottom.
   `StatsTab` ("Used by N agents", `useSkillAgents` → `GET /skills/:id/agents`, `StatsTab/StatsTab.tsx:15-45`) is
   kept for then.
 
+### `/repos/:repoId/conventions`
+- `ConventionsView` (`src/app/(shell)/repos/[repoId]/conventions/page.tsx:12-14`, title `shell.json:54`): breadcrumb
+  "Skills Lab › Conventions", heading "Conventions in" + the repo name (mono); `useConventions` →
+  `GET /repos/:id/conventions` (`src/lib/hooks/conventions.ts:29-36`), polled every 2 s while `latest_scan` is
+  `queued`/`running` (`:34`, `isScanActive` in `src/lib/conventions.ts`). Spec:
+  [`04-conventions.md`](./04-conventions.md).
+- No scan yet → EmptyState "No conventions yet", CTA **Run scan**; once a scan exists the header has
+  **Re-scan** and the subtitle "Detected from N sample files · last scan …" (the latest done scan) — two
+  separate buttons, both `POST /repos/:id/conventions/extract`, which answers 202 at once and queues a
+  background scan (or returns the one already active). "Scanning…" and disabled actions follow
+  `latest_scan`, not the request, so they survive a reload (`ConventionsView.tsx:47,65-96`). A status line
+  under the subtitle says "Scan queued…", "Scanning… started {relative}" (a 1 s clock) or "Last scan failed:
+  {error}" (`_components/ScanStatus/ScanStatus.tsx`, `ConventionsView.tsx:70`). A scan with no grounded
+  candidate shows a one-line note (`:97`).
+- Toolbar: **Deselect all** (disabled at 0) → `POST /repos/:id/conventions/deselect-all`, "N of M accepted", and
+  **Create skill** only when ≥ 1 is accepted (`ConventionsView.tsx:100-117`).
+- `CandidateCard`: the rule, `path:start-end` with a copy-snippet button, the snippet, "Confidence" bar + %
+  (green ≥ 85, amber ≥ 65); **Accept** ⇄ **Accepted**, **Reject** (the card leaves; stays gone after a reload),
+  **Edit** (inline input, Enter/Save → `PUT /conventions/:id {rule}`, Escape/Cancel restores)
+  (`CandidateCard.tsx:45-49,98,107-131`).
+- **Create skill** opens `CreateConventionSkillModal`: prefilled from `GET /repos/:id/conventions/skill-draft`;
+  banner "Merged from N accepted conventions in <repo>…", Name (taken → hint, 409), Description, Type,
+  Enabled, the body in the shared line-numbered editor with "unsaved" and "{n} tokens"; footer "Saved as v1 ·
+  added to Skills Lab", Cancel / Create skill → `POST /repos/:id/conventions/skill` →
+  `/skills/:id?tab=preview` (`CreateConventionSkillModal.tsx:51-52,74-86,123-172`).
+
 ### `/settings/:section`
 - `SettingsView` (`src/app/(shell)/settings/[section]/page.tsx:12-14`). Sub-nav from vendored `SETTINGS_SECTIONS`:
-  `api-keys` "API Keys", `models` "Feature Models" (`src/vendor/ui/nav.ts:45-48`, `SettingsView.tsx:28-35`).
+  `api-keys` "API Keys", `models` "Feature Models" (`src/vendor/ui/nav.ts:46-49`, `SettingsView.tsx:28-35`).
 - `api-keys`: four rows, OpenAI, Anthropic, OpenRouter, GitHub PAT (`SettingsApiKeys/constants.ts:11-16`),
   each with Configured / Not set from `GET /settings/secrets-status` and "Test connection" →
   `POST /settings/test-connection` (`SettingsApiKeys.tsx:39-50,83,93`).
@@ -230,9 +256,9 @@ No `data-testid`s: flows match visible text and URLs. "Seed" = `../server/src/db
 | `03-agents` | "Security Reviewer" | Seed `:253`, via `AgentCard` |
 | `04-pr-findings` | button "Agent runs"; `tab=findings`; "request changes"; "2 findings"; "Hardcoded Stripe secret key in commit" | `PrDetailHeader.tsx:91`, `prReview.json:177` (a plain `<button>` whose name includes the count, `src/vendor/ui/kit/Tabs.tsx:25-49`); `PrDetailView.tsx:37-42,87`; `ReviewRunAccordion.tsx:69` and `prReview.json:162` (seed `:153`); `ReviewRunAccordion.tsx:73` and `prReview.json:166` (seed `:161-186`); seed `:169`, visible because the newest run opens on load (`useOpenRuns.ts:23-29`) |
 | `05-pr-diff` | button "Files changed"; `tab=diff`; "src/config.ts" | `PrDetailHeader.tsx:95`, `prReview.json:178`; seed `:134` via `DiffViewer` |
-| `06-onboarding` | "Add a repository"; "Repository URL" | `AddRepoView.tsx:58,76` → `messages/en/shell.json:79,81` |
-| `07-settings` | URLs `/settings/api-keys`, `/settings/models`; "API Keys"; "Feature Models" | `nav.ts:46-47` (sub-nav, crumb) and `messages/en/settings.json:6,24` (section titles) |
-| `08-skills-lab` | URL `/skills`; "branch-coverage"; button "Open branch-coverage"; `tab=preview`; "Rendered as the reviewing agent receives it."; "When to apply:"; button "Open Test Quality Reviewer"; `tab=config`; button "Skills" (exact); `tab=skills`; "3 of 3 enabled" | Seeded skill `../server/src/db/seed-skills.ts:21`; the card's name button `SkillCard.tsx:53-64` with `skills.json:109`; `SkillsListView.tsx:62`; `skills.json:209`; `src/app/(shell)/skills/helpers.ts:17`; `AgentCard.tsx:39` with `agents.json:7` (agent seed `:273-284`); the Skills tab `agents.json:51` (the sidebar "Skills" is a link, so `--exact` button finds the tab); `agents.json:95`, three skills linked by seed `:339-354` |
+| `06-onboarding` | "Add a repository"; "Repository URL" | `AddRepoView.tsx:58,76` → `messages/en/shell.json:80,82` |
+| `07-settings` | URLs `/settings/api-keys`, `/settings/models`; "API Keys"; "Feature Models" | `nav.ts:47-48` (sub-nav, crumb) and `messages/en/settings.json:6,24` (section titles) |
+| `08-skills-lab` | URL `/skills`; "branch-coverage"; button "Open branch-coverage"; `tab=preview`; "Rendered as the reviewing agent receives it."; "When to apply:"; button "Open Test Quality Reviewer"; `tab=config`; button "Skills" (exact); `tab=skills`; "3 of 3 enabled" | Seeded skill `../server/src/db/seed-skills.ts:21`; the card's name button `SkillCard.tsx:53-64` with `skills.json:109`; `SkillsListView.tsx:62`; `skills.json:209`; `src/lib/skills.ts:28`; `AgentCard.tsx:43` with `agents.json:7` (agent seed `:273-284`); the Skills tab `agents.json:51` (the sidebar "Skills" is a link, so `--exact` button finds the tab); `agents.json:95`, three skills linked by seed `:339-354` |
 
 ## When you change this
 

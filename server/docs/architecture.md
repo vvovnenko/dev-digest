@@ -87,7 +87,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 
 - `llm('openai' | 'anthropic')` builds `src/adapters/llm/openai.ts` / `anthropic.ts`.
   `llm('openrouter')` builds reviewer-core's `OpenRouterProvider`. Each gets
-  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:255,263,268`, in `buildLlm`, `:247-269`);
+  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:269,277,282`, in `buildLlm`, `:247-269`);
   OpenAI/Anthropic return tokens only, so their models are priced under the catalog alias (`src/platform/price-book.ts:17-22`).
   The container imports it from the `@devdigest/reviewer-core/llm/openrouter.js` subpath
   (`:26`): the package index does not export it, and `pnpm arch` allows that import here only.
@@ -101,12 +101,12 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 - `runBus` is one per app, so closing one app never ends another app's streams (`:115-116`).
   Tests pass their own bus through `overrides.runBus` (`test/run-lifecycle.it.test.ts:168-179`).
 - `invalidateSecretCaches()` drops the cached LLM clients, the GitHub client and the
-  embedder (`src/platform/container.ts:305-309`). Its only caller is `SettingsService.testConnection`, right
+  embedder (`src/platform/container.ts:319-323`). Its only caller is `SettingsService.testConnection`, right
   after it saves a key that passed the test (`src/modules/settings/service.ts:57-60`).
 - A service's dependencies are its module's ports: `AgentDeps`, `SkillsDeps`, `RepoDeps` (with the
   `RepoIndexing` port), `PullsDeps`, `PollingDeps`, `SettingsDeps`, `WorkspaceDeps` and
   `ReviewDeps` — store, agents (whose `enabledSkills` feeds a run's prompt), run bus, diff source,
-  repo context, LLM (`src/modules/agents/ports.ts:56`, `src/modules/skills/ports.ts:50-52`,
+  repo context, LLM (`src/modules/agents/ports.ts:56`, `src/modules/skills/ports.ts:52-54`,
   `src/modules/repos/ports.ts:40-57`,
   `src/modules/pulls/ports.ts:22`, `src/modules/polling/ports.ts:20`,
   `src/modules/settings/ports.ts:15`, `src/modules/workspace/ports.ts:13`,
@@ -115,7 +115,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   (`github: () => container.github()`), so a missing key still surfaces on first use.
   Tests pass in-memory fakes (`test/repos-service.test.ts`, `test/pulls-service.test.ts`,
   `test/settings-service.test.ts`).
-- Most adapter interfaces come from `@devdigest/shared` (`src/platform/container.ts:1-10`, `src/vendor/shared/adapters.ts:10-12`).
+- Most adapter interfaces come from `@devdigest/shared` (`src/platform/container.ts:1-12`, `src/vendor/shared/adapters.ts:10-12`).
   Exceptions: `DepGraph` and `Tokenizer` live in their adapter files
   (`src/adapters/depgraph/index.ts:27`, `src/adapters/tokenizer/index.ts:16`), and
   `RepoIntel` in `src/modules/repo-intel/types.ts:137`. repo-intel imports ast-grep
@@ -140,12 +140,12 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   `appWith` also overrides `secrets` and `openrouter` (`test/reviews.it.test.ts:126-130`),
   because "run all enabled agents reviews with each enabled agent"
   (`test/reviews.it.test.ts:602-611`) runs the seeded OpenRouter agents
-  (`src/db/seed.ts:14`, `src/platform/container.ts:263`).
+  (`src/db/seed.ts:14`, `src/platform/container.ts:277`).
 
 ## Modules and request context
 
 - The registry is static: `settings, repos, pulls, polling, workspace, agents, skills, reviews,
-  repoIntel` (`src/modules/index.ts:26-36`); `:16-19` says why there is no autoload.
+  repoIntel` (`src/modules/index.ts:27-38`); `:16-19` says why there is no autoload.
   `@fastify/autoload` is still a dependency (`package.json:22`) that nothing imports.
 - Each module is a plain async plugin registered with `await` (`src/app.ts:262-264`), so
   it is encapsulated and inherits `app.container` and the root error handler. Eight of
@@ -211,7 +211,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   check passes; a failed check keeps the old key and says `— the key was not saved`
   (`src/modules/settings/service.ts:44-62`; tests `test/settings-service.test.ts:48-72`).
 - A missing key makes the container getters throw `ConfigError`, which is a 500 `config_error`
-  (`src/platform/container.ts:231`, `:254`, `:262`, `:266`). Inside a review it fails the run instead.
+  (`src/platform/container.ts:245`, `:254`, `:262`, `:266`). Inside a review it fails the run instead.
 
 ## JobRunner (`src/platform/jobs.ts`)
 
@@ -242,7 +242,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   (`test/integration.it.test.ts:196`), which also waits for jobs queued behind their repo (`src/platform/jobs.ts:199-202`).
 - **Reviews do not use it.** They are fire-and-forget into their own queue: `container.reviewQueue`, a
   p-queue that runs `REVIEW_CONCURRENCY` review requests at once (default 2) while the rest wait
-  (`src/platform/container.ts:78`, `src/modules/reviews/service.ts:130-143`); see
+  (`src/platform/container.ts:82`, `src/modules/reviews/service.ts:130-143`); see
   [`../specs/review-flow.md`](../specs/review-flow.md).
 
 ## Writes that must stay consistent

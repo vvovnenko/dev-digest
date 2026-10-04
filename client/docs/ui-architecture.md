@@ -18,7 +18,7 @@ to `client/`; `[number]/` = `src/app/(shell)/repos/[repoId]/pulls/[number]/` (th
   the client `AppShell` once (`src/app/(shell)/layout.tsx:7-9`), so the frame, the command palette and the
   shortcut listeners survive navigation. The group adds nothing to the URL.
 - **Every `page.tsx` is a thin Server file.** It exports `generateMetadata`, whose title comes from
-  `shell.titles` (`messages/en/shell.json:46-58`; e.g. `src/app/(shell)/repos/[repoId]/pulls/[number]/page.tsx:7-10`
+  `shell.titles` (`messages/en/shell.json:46-59`; e.g. `src/app/(shell)/repos/[repoId]/pulls/[number]/page.tsx:7-10`
   → "PR #482 · DevDigest"), and renders one client view: `HomeView`, `AgentsListView`, `AgentEditorView`,
   `SkillsListView`, `SkillEditorView`, `SettingsView`, `PullsListView`, `PrDetailView`, `AddRepoView` (each `<Name>View.tsx` starts with
   `"use client"`).
@@ -61,8 +61,8 @@ ToastProvider → RepoProvider`. The `QueryClient` is created once, in `useState
 
 ## Hooks, query keys, invalidation
 
-All hooks live in `src/lib/hooks/*.ts`, re-exported by `src/lib/hooks/index.ts:4-9`. Pull-request, run,
-PR-list and skill keys come from the factories in `src/lib/hooks/keys.ts:7-37`: a key starts with the resource
+All hooks live in `src/lib/hooks/*.ts`, re-exported by `src/lib/hooks/index.ts:4-10`. Pull-request, run,
+PR-list and skill keys come from the factories in `src/lib/hooks/keys.ts:8-47`: a key starts with the resource
 and holds every `queryFn` input, so invalidating a prefix refreshes everything under it (`prKeys.all(prId)` =
 the PR's detail, reviews, runs and comments; `skillKeys.all` = every skill list, detail, version history and
 usage list). An agent's skill links sit under the agent's own `["agent", id]` prefix
@@ -88,6 +88,9 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
 | `prKeys.reviews(prId)` | `usePrReviews` → `GET /pulls/:id/reviews` (`reviews.ts:38-44`) | — | finding action, optimistic (`reviews.ts:168-183`); delete review (`reviews.ts:85`); `prKeys.all` invalidations |
 | `prKeys.comments(prId)` | `usePrComments` → `GET /pulls/:id/comments` (`reviews.ts:91-97`) | — | `useCreatePrComment` (`reviews.ts:113`) |
 | `runKeys.trace(runId)` | `useRunTrace` → `GET /runs/:id/trace` (`trace.ts:13-20`) | no retry | a finished run, all traces (`reviews.ts:55`) |
+| `conventionKeys.state(repoId)` | `useConventions` → `GET /repos/:id/conventions` (`conventions.ts:29-36`) | every 2 s while `latest_scan` is `queued`/`running` (`conventions.ts:34`) | `useExtractConventions` → `POST …/extract` (202) sets data, which starts the polling (`conventions.ts:47`); `useUpdateConvention` → `PUT /conventions/:id`, optimistic (a reject drops the card), rolled back on error, refetched once the last of several quick edits settles (`conventions.ts:81-109`); `useDeselectAllConventions`, optimistic (`conventions.ts:112-135`) |
+| `conventionKeys.skillDraft(repoId)` | `useConventionSkillDraft` → `GET /repos/:id/conventions/skill-draft` (`conventions.ts:142-151`) | never cached (`staleTime`/`gcTime` 0), no retry | — |
+| `skillKeys.detail(id)` · `skillKeys.all` | `useCreateConventionSkill` → `POST /repos/:id/conventions/skill` (`conventions.ts:159-169`) | — | sets the new skill's detail and invalidates `skillKeys.all`, so `/skills` lists it |
 | `["repo-intel-state", repoId]` | `useRepoIntelStatus` → `GET /repos/:id/index-state` (`repo-intel.ts:31-38`) | every 1.5 s when `poll` | `useResyncRepoIntel` (`repo-intel.ts:46`) |
 
 - **The PR list is shared, and polls only where asked.** The GET only reads what the server stores;
@@ -150,9 +153,10 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
   (`src/lib/providers.tsx:18`). e2e flows assert some message text, so change a string only with its flow
   ([`../specs/pages.md`](../specs/pages.md#copy-that-e2e-flows-assert)).
 - **Some vendored copy is English too:** nav labels, settings sections and the shortcut list
-  (`src/vendor/ui/nav.ts:25,31-32,45-48,57-66`). The shortcut list still says "Dismiss finding" for `d`
-  (`nav.ts:65`), while the card button says "Reject". `nav.ts` changed once on purpose, in L02, to add the
-  SKILLS LAB section (Skills, then Agents) and the `g s` row; it stays vendored otherwise.
+  (`src/vendor/ui/nav.ts:25,31-32,46-49,58-67`). The shortcut list still says "Dismiss finding" for `d`
+  (`nav.ts:66`), while the card button says "Reject". `nav.ts` changed once on purpose, in L02, to add the
+  SKILLS LAB section (Skills, then Agents) and the `g s` row, and once more in HW2 to add Conventions
+  (`/repos/:repoId/conventions`, `nav.ts:33`); it stays vendored otherwise.
 
 ## Styling and theme
 
@@ -191,7 +195,7 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
   turns true only after repos have loaded and the id matches none of them (`repo-context.tsx:69-72`).
 - **Shortcuts.** Cmd/Ctrl+K opens the palette and `?` opens help; both ignore text inputs
   (`useGlobalShortcuts.ts:29-38`). `g` then `p` / `s` / `a` / `,` navigates if the second key comes within
-  1200 ms (`useGlobalShortcuts.ts:39-52`, `constants.ts:4`, `src/vendor/ui/nav.ts:25,31-32,42`); the handler
+  1200 ms (`useGlobalShortcuts.ts:39-52`, `constants.ts:4`, `src/vendor/ui/nav.ts:25,31-32,43`); the handler
   listens in the capture phase and stops the second key, so `g a` never reaches a page shortcut
   (`useGlobalShortcuts.ts:45-48,54`).
 - **Finding shortcuts** `j`/`k`/`a`/`d` act only on a plain key press — no Cmd/Ctrl/Alt, not in a text field,

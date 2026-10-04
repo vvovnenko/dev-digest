@@ -12,8 +12,8 @@ import { Button, Drawer, FormField, Icon, Markdown, SelectInput, TextInput } fro
 import type { SkillImportPreview, SkillType } from "@devdigest/shared";
 import { useCreateSkill, usePreviewSkillImport } from "@/lib/hooks/skills";
 import { ApiError } from "@/lib/api";
-import { SKILL_TYPES } from "../../../../constants";
-import { estimateTokens, isValidSkillName, renderSkillBlock, withoutImages } from "../../../../helpers";
+import { SKILL_TYPES, estimateTokens, isValidSkillName, renderSkillBlock } from "@/lib/skills";
+import { withoutImages } from "../../../../helpers";
 import { ACCEPTED_EXTENSIONS, DRAWER_WIDTH } from "./constants";
 import { checkFile, dataUrlToBase64, type FileProblem } from "./helpers";
 import { s } from "./styles";

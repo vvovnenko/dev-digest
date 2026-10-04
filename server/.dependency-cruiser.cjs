@@ -244,16 +244,14 @@ module.exports = {
       severity: 'error',
       comment:
         'Nothing the API or the db scripts run reaches this file, so it is dead code (tests are not ' +
-        'cruised). Delete it, or wire it in. Exempt: the entry points themselves, the test doubles in ' +
-        'adapters/mocks.ts, and settings/feature-models.ts, pre-staged for later lessons and covered ' +
-        'by test/settings-models.it.test.ts.',
+        'cruised). Delete it, or wire it in. Exempt: the entry points themselves and the test doubles ' +
+        'in adapters/mocks.ts.',
       from: { path: '^src/(?:server|db/migrate|db/seed)\\.ts$' },
       to: {
         path: '^(?:src/|\\.\\./reviewer-core/src/)',
         pathNot: [
           '^src/(?:server|db/migrate|db/seed)\\.ts$',
           '^src/adapters/mocks\\.ts$',
-          '^src/modules/settings/feature-models\\.ts$',
         ],
         reachable: false,
       },

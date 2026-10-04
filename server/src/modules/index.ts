@@ -6,6 +6,7 @@ import polling from './polling/routes.js';
 import workspace from './workspace/routes.js';
 import agents from './agents/routes.js';
 import skills from './skills/routes.js';
+import conventions from './conventions/routes.js';
 import reviews from './reviews/routes.js';
 import repoIntel from './repo-intel/routes.js';
 
@@ -18,7 +19,7 @@ import repoIntel from './repo-intel/routes.js';
  * than via filesystem autoload so the same code path works under tsx, the
  * bundler, and vitest — native dynamic import() of .ts files is not portable.)
  *
- * This is the Part-0 starter set plus the lessons' modules (L02: skills). Each
+ * This is the Part-0 starter set plus the lessons' modules (L02: skills, conventions). Each
  * course lesson adds its own module here (intent/smart-diff, blast,
  * brief/context/onboarding, eval/ci/hooks, memory, plugins, …) without touching
  * any other module or the shared schema.
@@ -31,6 +32,7 @@ export const modules: Record<string, FastifyPluginAsync> = {
   workspace,
   agents,
   skills,
+  conventions,
   reviews,
   repoIntel,
 };

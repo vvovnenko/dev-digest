@@ -29,8 +29,8 @@ confirm.
   version notes, `applySkillPatch`, the import decisions: `classifyEntries`,
   `splitFrontmatter`, `findHiddenChars`, `buildImportDraft`), `import-parser.ts`
   (fflate + yaml, in memory), `ports.ts`, `service.ts`, `repository.ts`, `helpers.ts`,
-  `routes.ts`, `constants.ts`. Registered in `src/modules/index.ts:33`; the container
-  getter is `src/platform/container.ts:131-133`.
+  `routes.ts`, `constants.ts`. Registered in `src/modules/index.ts:34`; the container
+  getter is `src/platform/container.ts:136-138`.
 - **Server, changed:** `src/modules/agents/**` — skill links carry a per-agent `enabled`
   flag, `skill_count` on every agent, `enabledSkills(ws, agentId)`
   (`src/modules/agents/repository.ts:222-244`); `src/modules/reviews/**` — the run loads
@@ -56,7 +56,7 @@ confirm.
 
   | Where | What |
   | ----- | ---- |
-  | Sidebar | new **SKILLS LAB** section: Skills (`g s`), then Agents (moved out of WORKSPACE) — the one approved edit of a vendored file, `client/src/vendor/ui/nav.ts:28-34` |
+  | Sidebar | new **SKILLS LAB** section: Skills (`g s`), then Agents (moved out of WORKSPACE) — an approved edit of a vendored file (HW2 adds Conventions there too), `client/src/vendor/ui/nav.ts:28-35` |
   | `/skills` | grid of skill cards: name, type badge, source, description, global enabled toggle, "N agents", delete; search; **Add Skill ▾** → Create from scratch / Import file… |
   | `/skills/:id` | card list on the left; tabs **Config · Preview · Versions** (Stats hidden until HW8), `?tab=`, default `preview` |
   | `/agents/:id?tab=skills` | every workspace skill in the agent's order: drag handle, checkbox (enabled for this agent), type badge; "N of M enabled"; filter |
@@ -107,10 +107,10 @@ experiment (the user's decision, 2026-10-03: one new agent only).
 | `SkillAgentUse` (`knowledge.ts:193`) | `agent_id, agent_name, agent_enabled, order` |
 | `SkillImportRequest` (`knowledge.ts:205`) | `filename, content_base64` (≤ 699,052 chars ⇒ ≤ 512 KiB raw, inside the 1 MiB body limit) |
 | `SkillImportPreview` (`knowledge.ts:239`) | `draft {name, description, type, body}, source_file, skipped [{path, reason}], warnings [{code, detail?}], name_taken` |
-| `Agent.skill_count` (`knowledge.ts:315`) | enabled links |
-| `AgentSkillLink` (`knowledge.ts:338`) | `agent_id, skill_id, order, enabled` |
-| `AgentSkillsUpdate` (`knowledge.ts:359`) | `links: [{skill_id, enabled}]` (array order = prompt order) \| `skill_ids` (all enabled) \| `skill_id` + `order?`; duplicates in `links` are a 422 |
-| `AgentVersionConfig` (`knowledge.ts:382`) | `skills` = ids of the **enabled** links in order; `skill_links` (optional) = every link with its flag |
+| `Agent.skill_count` (`knowledge.ts:401`) | enabled links |
+| `AgentSkillLink` (`knowledge.ts:424`) | `agent_id, skill_id, order, enabled` |
+| `AgentSkillsUpdate` (`knowledge.ts:445`) | `links: [{skill_id, enabled}]` (array order = prompt order) \| `skill_ids` (all enabled) \| `skill_id` + `order?`; duplicates in `links` are a 422 |
+| `AgentVersionConfig` (`knowledge.ts:468`) | `skills` = ids of the **enabled** links in order; `skill_links` (optional) = every link with its flag |
 | `PromptSkillBlock` (`trace.ts:43`) | `id, name, version?, tokens, text?`; `PromptAssembly.skill_blocks` (`trace.ts:57`), nullish so older traces parse |
 
 **Routes** — new, `src/modules/skills/routes.ts`

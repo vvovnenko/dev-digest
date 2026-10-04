@@ -65,6 +65,7 @@ pnpm coverage     # v8 report, no thresholds
 - 12 of 18 `messages/en/*.json` namespaces have no screen yet — pre-staged for
   later lessons, not dead code.
 - Since L02 `skills` has a screen (the Skills Lab), so 11 of 18 have none — supersedes the count above.
+- Since HW2 `conventions` has a screen too (`/repos/:repoId/conventions`), so 10 of 18 have none.
 
 ## Do not touch
 

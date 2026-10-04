@@ -7,8 +7,8 @@ The feature spans the API, the engine and the UI, so its single spec lives in
 
 UI summary:
 
-- The sidebar gets a **SKILLS LAB** section, Skills (`g s`) then Agents — the one approved
-  edit of a vendored file, `src/vendor/ui/nav.ts`.
+- The sidebar gets a **SKILLS LAB** section, Skills (`g s`) then Agents — an approved
+  edit of a vendored file, `src/vendor/ui/nav.ts` (HW2 adds Conventions the same way).
 - `/skills`: a grid of skill cards (name, type badge, source, description, a global
   enabled toggle, "N agents", delete), local search, and **Add Skill ▾** → Create from
   scratch (a modal) or Import file… (a drawer: pick a `.md` / `.zip`, see the parsed draft,

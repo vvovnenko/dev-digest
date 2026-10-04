@@ -5,6 +5,8 @@ export interface NewSkill extends SkillContent {
   workspaceId: string;
   source: SkillSource;
   enabled: boolean;
+  /** Files the skill was derived from (a skill made from conventions). */
+  evidenceFiles?: string[] | null;
 }
 
 /** An agent that has a skill linked and enabled. */

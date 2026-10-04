@@ -107,15 +107,15 @@ Same path to `/pulls/482` as 04, then:
 `open /onboarding`, `wait --url /onboarding`, then `wait --text "Add a repository"`
 (heading) and `"Repository URL"` (field label), both messages
 (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`,
-`../client/messages/en/shell.json:79,81`). Never submits. The root empty state also says
+`../client/messages/en/shell.json:80,82`). Never submits. The root empty state also says
 "Add a repository" (`../client/src/app/(shell)/_components/HomeView/HomeView.tsx:37`,
-`../client/messages/en/shell.json:64`).
+`../client/messages/en/shell.json:65`).
 
 ### 07 — Settings renders the API Keys and Feature Models sections
 
 `open /settings/api-keys`, `wait --url`, `networkidle`, `wait --text "API Keys"`; then
 `open /settings/models`, `wait --url`, `wait --text "Feature Models"`. Section titles:
-`../client/messages/en/settings.json:6,24`. The vendored list (`../client/src/vendor/ui/nav.ts:46-47`)
+`../client/messages/en/settings.json:6,24`. The vendored list (`../client/src/vendor/ui/nav.ts:47-48`)
 puts the same labels in the settings nav and breadcrumb (`../client/src/app/(shell)/settings/[section]/_components/SettingsView/SettingsView.tsx:22,28-35`),
 so the text passes even if a section body fails to render.
 
@@ -132,9 +132,9 @@ Read-only. `set viewport 1280 1600` (as in 09), `open /skills`, `wait --url /ski
 - `wait --url tab=preview`: Preview is also the editor's default tab
   (`../client/src/app/(shell)/skills/[id]/_components/SkillEditorView/constants.ts:2,4`).
 - `wait --text "Rendered as the reviewing agent receives it."` (the tab's caption,
-  `../client/src/app/(shell)/skills/[id]/_components/SkillEditor/_components/PreviewTab/PreviewTab.tsx:23`,
+  `../client/src/app/(shell)/skills/[id]/_components/SkillEditor/_components/PreviewTab/PreviewTab.tsx:24`,
   `../client/messages/en/skills.json:209`) and `wait --text "When to apply:"`: the rendered block
-  carries the skill's description as that line (`../client/src/app/(shell)/skills/helpers.ts:17`,
+  carries the skill's description as that line (`../client/src/lib/skills.ts:28`,
   the engine's `../reviewer-core/src/prompt.ts:84`).
 
 Then `open /agents`, `wait --url /agents`, `networkidle`, and:
@@ -157,7 +157,7 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
 
 The one flow that writes, so it sorts last. It needs the API's fake LLM
 (`DEVDIGEST_FAKE_LLM=1`, `../scripts/e2e.sh:47-49`, `../.github/workflows/e2e-web.yml:7-9`):
-`../server/src/platform/container.ts:242` hands every agent a `FakeReviewLlm`, which answers
+`../server/src/platform/container.ts:256` hands every agent a `FakeReviewLlm`, which answers
 with one WARNING titled "Fake finding on the first added line" on the first added line of
 the prompt's diff (`../server/src/adapters/llm/fake.ts:17-18,21,45`). With no clone the diff
 comes from the stored patches (`../server/src/adapters/git/pr-diff.ts:19-29`), so the seed's one
@@ -198,7 +198,7 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | `/pulls` | 01, 02, 04, 05, 09 | route `../client/src/app/(shell)/repos/[repoId]/pulls/` (the `(shell)` group adds nothing to the URL); redirect `../client/src/app/(shell)/_components/HomeView/HomeView.tsx:21` |
 | `/pulls/482` | 02, 04, 05, 09 | `../client/src/app/(shell)/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:35` + seed PR number `../server/src/db/seed.ts:116` |
 | `tab=findings`, `tab=diff` | 04, 09 · 05 | hardcoded tab keys, `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:90,95` (parsed by `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/helpers.ts:15`) |
-| `/agents`, `/onboarding`, `/settings/api-keys`, `/settings/models` | 03, 06, 07, 08 | app routes; section keys vendored, `../client/src/vendor/ui/nav.ts:46-47` |
+| `/agents`, `/onboarding`, `/settings/api-keys`, `/settings/models` | 03, 06, 07, 08 | app routes; section keys vendored, `../client/src/vendor/ui/nav.ts:47-48` |
 | `/skills`, `tab=preview` · `tab=config`, `tab=skills` | 08 | route `../client/src/app/(shell)/skills/`; tab keys `../client/src/app/(shell)/skills/[id]/_components/SkillEditorView/constants.ts:2` · `../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/constants.ts:2` |
 | Pull Requests | 01 | messages, `../client/messages/en/prReview.json:81` (also vendored `../client/src/vendor/ui/nav.ts:25`) |
 | Add rate limiting to public API endpoints | 02, 04, 05, 09 | seed, `../server/src/db/seed.ts:117` |
@@ -209,17 +209,17 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | src/config.ts | 05 | seed, `../server/src/db/seed.ts:134` |
 | Security Reviewer | 03 | seed, `../server/src/db/seed.ts:253` |
 | branch-coverage · Open branch-coverage (`aria-label`) | 08 | seed `../server/src/db/seed-skills.ts:21`; message `../client/messages/en/skills.json:109` (`../client/src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:56`) |
-| Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:209`; block format `../client/src/app/(shell)/skills/helpers.ts:17` (= `../reviewer-core/src/prompt.ts:84`) |
+| Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:209`; block format `../client/src/lib/skills.ts:28` (= `../reviewer-core/src/prompt.ts:84`) |
 | Open Test Quality Reviewer (`aria-label`) · Skills (tab button) | 08 | messages `../client/messages/en/agents.json:7,51`; seed name `../server/src/db/seed.ts:18` |
 | 3 of 3 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:153`) over the seed's three linked skills |
-| Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:79,81` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
+| Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:80,82` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
 | Run Review · Run all enabled agents | 09 | messages `../client/messages/en/prReview.json:52,49` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:87,65`) |
 | Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:93`) |
 | Fake finding on the first added line | 09 | `FAKE_FINDING_TITLE`, `../server/src/adapters/llm/fake.ts:17` |
 | Accept · accepted | 09 | messages `../client/messages/en/prReview.json:6,3` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:112,64`) |
 | Open run trace & logs (`aria-label`) | 09 | message `../client/messages/en/prReview.json:125` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.tsx:230`) |
 | Prompt assembly | 09 | message `../client/messages/en/runs.json:22` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.tsx:76`) |
-| API Keys · Feature Models | 07 | messages `../client/messages/en/settings.json:6,24` + vendored `../client/src/vendor/ui/nav.ts:46-47` |
+| API Keys · Feature Models | 07 | messages `../client/messages/en/settings.json:6,24` + vendored `../client/src/vendor/ui/nav.ts:47-48` |
 
 ## Rules for new flows
 

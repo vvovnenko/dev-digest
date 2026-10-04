@@ -108,7 +108,7 @@ and its task line carries only the PR number (`../server/src/modules/reviews/hel
 
 The server builds `OpenRouterProvider` (`src/llm/openrouter.ts`) for agents on
 `openrouter` — every seeded agent (`../server/src/db/seed.ts:14-15`) — and its own
-OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:237-269`).
+OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:251-283`).
 `OpenRouterProvider`:
 
 - It is the OpenAI SDK pointed at `https://openrouter.ai/api/v1`, with a 90 s timeout

@@ -1,0 +1,80 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for CandidateCard. */
+export const s = {
+  // An inset shadow, not a border: the Card already sets the `border` shorthand,
+  // and the stripe must not shift the content when it appears.
+  card: (accepted: boolean): CSSProperties => ({
+    display: "flex",
+    gap: 24,
+    padding: 24,
+    boxShadow: accepted ? "inset 4px 0 0 var(--ok)" : "none",
+  }),
+  main: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  rule: {
+    fontSize: 17,
+    fontWeight: 600,
+    fontStyle: "italic",
+    lineHeight: 1.45,
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  evidence: {
+    marginTop: 14,
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    overflow: "hidden",
+  } satisfies CSSProperties,
+  evidenceHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 12px",
+    borderBottom: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  evidenceLabel: {
+    fontSize: 12.5,
+    color: "var(--text-muted)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+  copyBtn: {
+    marginLeft: "auto",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 4,
+    borderRadius: 5,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  snippet: {
+    margin: 0,
+    padding: "12px 14px",
+    background: "var(--code-bg)",
+    color: "var(--text-primary)",
+    fontSize: 12.5,
+    lineHeight: 1.6,
+    whiteSpace: "pre",
+    overflowX: "auto",
+  } satisfies CSSProperties,
+  confidence: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 14,
+    fontSize: 13,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  bar: { width: 140 } satisfies CSSProperties,
+  actions: {
+    width: 230,
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  } satisfies CSSProperties,
+} as const;

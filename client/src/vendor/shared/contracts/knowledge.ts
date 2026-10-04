@@ -264,15 +264,120 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+/** What a convention is about; the model picks one per candidate (`other` when none fits). */
+export const ConventionCategory = z.enum([
+  'naming',
+  'structure',
+  'error_handling',
+  'async',
+  'typing',
+  'imports',
+  'testing',
+  'formatting',
+  'other',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/** A candidate's review state; `rejected` ones are never listed and never reach a skill. */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+/**
+ * A convention the model proposed and code grounded: `evidence_snippet` is the real
+ * text of `evidence_path` lines `evidence_start_line`..`evidence_end_line`, never the
+ * model's quote. `accepted` mirrors `status === 'accepted'`.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  category: ConventionCategory,
   rule: z.string(),
   evidence_path: z.string(),
+  evidence_start_line: z.number().int(),
+  evidence_end_line: z.number().int(),
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
+  status: ConventionStatus,
   accepted: z.boolean(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/**
+ * A scan's lifecycle: `POST .../extract` creates it `queued`, a background job
+ * moves it to `running`, then `done` (results stored) or `failed` (`error`).
+ * At most one `queued`/`running` scan per repo.
+ */
+export const ConventionScanStatus = z.enum(['queued', 'running', 'done', 'failed']);
+export type ConventionScanStatus = z.infer<typeof ConventionScanStatus>;
+
+/** One run of `POST /repos/:id/conventions/extract`; the result fields are filled when it is `done`. */
+export const ConventionScan = z.object({
+  id: z.string(),
+  status: ConventionScanStatus,
+  /** Why a `failed` scan failed (model error, restart, …). */
+  error: z.string().nullish(),
+  /** Files the model saw: configs + the top-ranked source files. */
+  sample_files: z.array(z.string()),
+  provider: z.string(),
+  model: z.string(),
+  /** Candidates the model returned / that passed the evidence check and were stored. */
+  candidates_found: z.number().int(),
+  candidates_kept: z.number().int(),
+  cost_usd: z.number().nullish(),
+  created_at: z.string(),
+  started_at: z.string().nullish(),
+  finished_at: z.string().nullish(),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+/**
+ * `GET /repos/:id/conventions` and the 202 reply of `.../extract`. `scan` is the
+ * latest `done` scan (what the candidates came from); `latest_scan` is the newest
+ * scan of any status — `queued`/`running` while one is in flight (poll until it
+ * isn't), `failed` when the last attempt failed. Candidates: every non-rejected one.
+ */
+export const ConventionsState = z.object({
+  scan: ConventionScan.nullable(),
+  latest_scan: ConventionScan.nullable(),
+  candidates: z.array(ConventionCandidate),
+});
+export type ConventionsState = z.infer<typeof ConventionsState>;
+
+/** Body of `PUT /conventions/:id`: accept / reject / back to pending, or an inline edit of the rule. */
+export const ConventionUpdate = z
+  .object({
+    status: ConventionStatus.optional(),
+    rule: z
+      .string()
+      .max(500)
+      .refine((s) => s.trim().length > 0, { message: 'The rule is empty' })
+      .optional(),
+  })
+  .refine((u) => u.status !== undefined || u.rule !== undefined, {
+    message: 'Nothing to update',
+  });
+export type ConventionUpdate = z.infer<typeof ConventionUpdate>;
+
+/** `GET /repos/:id/conventions/skill-draft`: the accepted candidates merged into one editable skill. */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  accepted_count: z.number().int(),
+  /** A skill with `name` already exists in this workspace. */
+  name_taken: z.boolean(),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
+
+/** Body of `POST /repos/:id/conventions/skill`: the draft as the user edited it (source is `extracted`). */
+export const ConventionSkillCreate = SkillCreate.pick({
+  name: true,
+  description: true,
+  type: true,
+  body: true,
+  enabled: true,
+});
+export type ConventionSkillCreate = z.infer<typeof ConventionSkillCreate>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a

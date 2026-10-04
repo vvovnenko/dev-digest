@@ -7,8 +7,7 @@ import { Button, Modal, FormField, TextInput, SelectInput, Textarea } from "@dev
 import type { SkillType } from "@devdigest/shared";
 import { useCreateSkill } from "@/lib/hooks/skills";
 import { ApiError } from "@/lib/api";
-import { SKILL_TYPES } from "../../../../constants";
-import { isValidSkillName } from "../../../../helpers";
+import { SKILL_TYPES, isValidSkillName } from "@/lib/skills";
 import { MODAL_WIDTH } from "./constants";
 import { s } from "./styles";
 

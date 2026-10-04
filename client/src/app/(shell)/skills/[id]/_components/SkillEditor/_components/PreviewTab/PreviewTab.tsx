@@ -6,7 +6,8 @@
 import { useTranslations } from "next-intl";
 import { Markdown } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
-import { estimateTokens, renderSkillBlock, withoutImages } from "../../../../../helpers";
+import { estimateTokens, renderSkillBlock } from "@/lib/skills";
+import { withoutImages } from "../../../../../helpers";
 import { s } from "./styles";
 
 export function PreviewTab({ skill }: { skill: Skill }) {

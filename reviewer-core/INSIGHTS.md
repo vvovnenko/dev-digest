@@ -46,6 +46,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-28** — Wave 1 engine changes (verdict from findings, limits, usage on failure, abort signal, dedupe): +2 (What doesn't work ×2 fixed)
 - **2026-09-28** — Wave 2 (listModels timeout): +1 (What doesn't work, fixed)
 - **2026-09-29** — Wave 5 (README names and inputs, pipeline intro): +1 (Doc drift fix note)
+- **2026-10-04** — Conventions scan cut off at 6000 tokens (deepseek reasoning measured; no engine change kept): +1 (Open questions)
 
 ## Open questions
 
@@ -55,3 +56,4 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   Evidence: `src/prompt.ts:16-28`, `../server/src/modules/reviews/helpers.ts:82-84`.
   - **2026-09-23** — The server evidence has moved: the task line is `taskLine()` with title and author at `../server/src/modules/reviews/helpers.ts:89-91` (was cited as `:82-84`). Evidence: `../server/src/modules/reviews/helpers.ts:89-91`.
   - **2026-09-28** — Resolved: the server's task line names only the PR number; title and author go through `reviewPullRequest`'s `pr` into their own `pr-meta` untrusted block, so the guard's claim is now true. Evidence: `src/prompt.ts:120-123`, `../server/src/modules/reviews/run-executor.ts:207`
+- **2026-10-04** — Reviews run the seeded agents on `deepseek/deepseek-v4-flash` with `max_tokens` 8192, and that model's hidden reasoning (2.2K–4.7K tokens measured on a conventions prompt) counts against it, so a review whose findings JSON nears ~4K tokens could be cut off (`finish_reason: length`, a failed but billed run). Raise `DEFAULT_MAX_OUTPUT_TOKENS`, or let agents set it? Evidence: `src/review/run.ts:46`, `src/llm/openrouter.ts:130-137`

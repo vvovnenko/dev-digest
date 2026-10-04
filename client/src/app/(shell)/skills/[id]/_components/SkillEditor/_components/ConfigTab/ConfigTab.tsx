@@ -7,9 +7,8 @@ import type { Skill, SkillType } from "@devdigest/shared";
 import { useUpdateSkill } from "@/lib/hooks/skills";
 import { useToast } from "@/lib/toast";
 import { ApiError } from "@/lib/api";
-import { SKILL_TYPES } from "../../../../../constants";
-import { estimateTokens, isValidSkillName, renderSkillBlock } from "../../../../../helpers";
-import { LineNumberedEditor } from "./_components/LineNumberedEditor";
+import { LineNumberedEditor } from "@/components/line-numbered-editor";
+import { SKILL_TYPES, estimateTokens, isValidSkillName, renderSkillBlock } from "@/lib/skills";
 import { changedFields, mergeDraft, type SkillDraft } from "./helpers";
 import { s } from "./styles";
 

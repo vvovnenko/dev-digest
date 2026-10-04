@@ -15,7 +15,8 @@ import type { SettingsStore } from './ports.js';
  * registry default in `FEATURE_MODELS` — which mirrors each module's old
  * constant, so behaviour is unchanged until a model is explicitly picked.
  *
- * Callers pass the settings store (`container.settingsRepo` in the wiring).
+ * Callers pass the settings store: `container.featureModel(ws, id)` wraps
+ * `resolveFeatureModel` with `container.settingsRepo` (conventions uses it).
  */
 
 const DEFAULTS = Object.fromEntries(
@@ -28,9 +29,9 @@ export function defaultFeatureModel(id: FeatureModelId): FeatureModelChoice {
 }
 
 /**
- * The workspace's override for `id`, or `undefined` when unset/invalid. Callers
- * that keep their own dynamic default (e.g. conventions) use this directly so
- * that default is preserved; callers with a static default use
+ * The workspace's override for `id`, or `undefined` when unset/invalid. A caller
+ * that keeps a dynamic default of its own uses this directly so that default is
+ * preserved; callers with the registry default (conventions included) use
  * `resolveFeatureModel` instead.
  */
 export async function getFeatureModelOverride(

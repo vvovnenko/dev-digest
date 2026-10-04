@@ -53,7 +53,7 @@ Files appear only when they earn their place: a pure CRUD module may have no `do
 each `routes.ts` plugin builds its service once from explicit ports, e.g.
 `new PullsService({ pulls: container.pullsRepo, github: () => container.github(), log: app.log })`
 (`pulls/routes.ts:25-29`; `app.log` satisfies the `Logger` port). Knowledge only the root
-has is adapted there: `container.repoIndexing` (`src/platform/container.ts:163-173`).
+has is adapted there: `container.repoIndexing` (`src/platform/container.ts:177-187`).
 
 **Legacy.** 25 known violations are frozen in `server/.dependency-cruiser-known-violations.json`,
 all in `modules/repo-intel/` (do-not-touch): its service and pipeline take the `Container`,
