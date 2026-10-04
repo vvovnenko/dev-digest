@@ -598,6 +598,7 @@ describe('ConventionsService', () => {
       version: 1,
       evidence_files: ['src/api/users.ts', 'src/api/teams.ts'],
       agent_count: 0,
+      injection_detected: false,
     });
     expect(skills.created[0]!.note).toBe('Created from 2 conventions in payments-api');
     expect((await service.skillDraft('w1', 'r1')).name_taken).toBe(true);

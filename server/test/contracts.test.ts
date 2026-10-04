@@ -21,6 +21,7 @@ import {
   AgentVersionConfig,
   SkillCreate,
   SkillImportRequest,
+  SkillImportUrlRequest,
   SkillName,
 } from '@devdigest/shared';
 
@@ -297,5 +298,17 @@ describe('skills contracts (L02)', () => {
     expect(SkillImportRequest.safeParse({ filename: 'a.md', content_base64: 'IyBoaQ==' }).success).toBe(true);
     expect(SkillImportRequest.safeParse({ filename: 'a.md', content_base64: 'not base64!' }).success).toBe(false);
     expect(SkillImportRequest.safeParse({ filename: 'a.md', content_base64: 'A'.repeat(699_053) }).success).toBe(false);
+  });
+
+  it('a URL import takes an https URL (≤ 2048 chars) and an optional kebab-case name', () => {
+    const raw = 'https://raw.githubusercontent.com/org/repo/main/skill.md';
+    expect(SkillImportUrlRequest.safeParse({ url: raw }).success).toBe(true);
+    expect(SkillImportUrlRequest.parse({ url: `  ${raw} ` }).url).toBe(raw);
+    expect(SkillImportUrlRequest.safeParse({ url: 'HTTPS://example.com/a.md', name: 'skil-13' }).success).toBe(true);
+    for (const url of ['http://example.com/a.md', 'javascript:alert(1)', 'ftp://example.com/a.md', 'not a url', '']) {
+      expect(SkillImportUrlRequest.safeParse({ url }).success, url).toBe(false);
+    }
+    expect(SkillImportUrlRequest.safeParse({ url: `https://example.com/${'a'.repeat(2030)}` }).success).toBe(false);
+    expect(SkillImportUrlRequest.safeParse({ url: raw, name: 'Bad Name' }).success).toBe(false);
   });
 });

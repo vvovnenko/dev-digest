@@ -7,6 +7,8 @@ import {
   classifyEntries,
   extensionOf,
   fallbackNameSource,
+  firstHeading,
+  slugifySkillName,
   splitFrontmatter,
   type ArchiveEntry,
   type ImportDraft,
@@ -42,8 +44,8 @@ class TooManyEntries extends Error {}
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
 const isZip = (bytes: Uint8Array) => ZIP_MAGIC.every((b, i) => bytes[i] === b);
 
-export function parseSkillUpload(input: { filename: string; bytes: Uint8Array }): ParsedUpload {
-  const { filename, bytes } = input;
+export function parseSkillUpload(input: { filename: string; bytes: Uint8Array; preferHeadingName?: boolean }): ParsedUpload {
+  const { filename, bytes, preferHeadingName: byHeading = false } = input;
   if (bytes.length === 0) throw new ValidationError('The file is empty', { reason: 'empty_file' });
   if (bytes.length > MAX_IMPORT_BYTES) {
     throw new ValidationError(`The file is larger than ${MAX_IMPORT_BYTES / 1024} KiB`, { reason: 'too_large' });
@@ -51,7 +53,7 @@ export function parseSkillUpload(input: { filename: string; bytes: Uint8Array })
   const ext = extensionOf(filename);
   if (ext === 'zip' || ext === 'skill' || isZip(bytes)) {
     if (!isZip(bytes)) throw new ValidationError('The file is not a zip archive', { reason: 'not_zip' });
-    return parseArchive(filename, bytes);
+    return parseArchive(filename, bytes, byHeading);
   }
   if (MARKDOWN_EXTENSIONS.has(ext)) {
     if (bytes.length > MAX_MARKDOWN_BYTES) {
@@ -59,12 +61,12 @@ export function parseSkillUpload(input: { filename: string; bytes: Uint8Array })
         reason: 'too_large',
       });
     }
-    return fromMarkdown(decodeUtf8(bytes), filename, fallbackNameSource(filename, filename), []);
+    return fromMarkdown(decodeUtf8(bytes), filename, fallbackNameSource(filename, filename), [], byHeading);
   }
   throw new ValidationError('Upload a .md file or a .zip skill folder', { reason: 'unsupported_type' });
 }
 
-function parseArchive(filename: string, bytes: Uint8Array): ParsedUpload {
+function parseArchive(filename: string, bytes: Uint8Array, byHeading: boolean): ParsedUpload {
   // Pass 1 — names and declared sizes only; the filter refuses every entry, so nothing inflates.
   const entries: ArchiveEntry[] = [];
   try {
@@ -106,7 +108,7 @@ function parseArchive(filename: string, bytes: Uint8Array): ParsedUpload {
   }
   if (!data) throw new ValidationError(`${main} could not be unpacked`, { reason: 'corrupt_archive' });
 
-  return fromMarkdown(decodeUtf8(data), main, fallbackNameSource(main, filename), skipped);
+  return fromMarkdown(decodeUtf8(data), main, fallbackNameSource(main, filename), skipped, byHeading);
 }
 
 function decodeUtf8(bytes: Uint8Array): string {
@@ -117,12 +119,22 @@ function decodeUtf8(bytes: Uint8Array): string {
   }
 }
 
-function fromMarkdown(text: string, sourceFile: string, fallbackName: string, skipped: SkippedEntry[]): ParsedUpload {
+function fromMarkdown(
+  text: string,
+  sourceFile: string,
+  fallbackName: string,
+  skipped: SkippedEntry[],
+  byHeading: boolean,
+): ParsedUpload {
   const split = splitFrontmatter(text);
   const warnings: ImportWarning[] = [];
   if (split.unterminated) warnings.push({ code: 'invalid_frontmatter', detail: 'the --- block is never closed' });
   const frontmatter = split.frontmatter === null ? null : readFrontmatter(split.frontmatter, warnings);
-  const draft = buildImportDraft({ frontmatter, body: split.body, fallbackName, skipped, warnings });
+  // `preferHeadingName` (URL import): with no usable frontmatter `name`, the first
+  // `#` heading names the draft before the folder or file name does.
+  const heading = byHeading ? firstHeading(split.body) : '';
+  const fallback = heading && slugifySkillName(heading) ? heading : fallbackName;
+  const draft = buildImportDraft({ frontmatter, body: split.body, fallbackName: fallback, skipped, warnings });
   return { ...draft, sourceFile, skipped };
 }
 

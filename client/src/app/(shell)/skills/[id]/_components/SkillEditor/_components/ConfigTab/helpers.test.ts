@@ -11,6 +11,7 @@ const SKILL: Skill = {
   body: "## Rule",
   enabled: true,
   version: 2,
+  injection_detected: false,
 };
 
 describe("changedFields", () => {

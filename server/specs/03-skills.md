@@ -19,9 +19,9 @@ Reviewer**, ships with three linked skills; a fourth is imported by hand to walk
 import path.
 
 Trust: a skill is an instruction in the agent's prompt, not data — the engine does not
-wrap it in `<untrusted>`. An imported skill is somebody else's instructions, so the
-import shows the whole text and the skipped files first, and saves only on an explicit
-confirm.
+wrap it in `<untrusted>`. The file import shows the whole text and the skipped files and
+saves only on confirm; the URL import saves at once. Every skill passes the injection
+gate: one that matches injection patterns is blocked ([05](05-skill-url-import.md)).
 
 ## Scope
 
@@ -30,7 +30,7 @@ confirm.
   `splitFrontmatter`, `findHiddenChars`, `buildImportDraft`), `import-parser.ts`
   (fflate + yaml, in memory), `ports.ts`, `service.ts`, `repository.ts`, `helpers.ts`,
   `routes.ts`, `constants.ts`. Registered in `src/modules/index.ts:34`; the container
-  getter is `src/platform/container.ts:136-138`.
+  getter is `src/platform/container.ts:139-141`.
 - **Server, changed:** `src/modules/agents/**` — skill links carry a per-agent `enabled`
   flag, `skill_count` on every agent, `enabledSkills(ws, agentId)`
   (`src/modules/agents/repository.ts:222-244`); `src/modules/reviews/**` — the run loads
@@ -89,9 +89,9 @@ confirm.
 
 **Out of scope, though in the mockups:** the skill editor's Context tab (project docs)
 and Evals tab, "Run on evals", pull % / accept % on cards and in Stats, the
-findings-by-category donut, syntax highlighting in the body editor, URL and community
-import, the conventions extractor, and an **API Contract** agent with its control
-experiment (the user's decision, 2026-10-03: one new agent only).
+findings-by-category donut, syntax highlighting in the body editor, community import (URL
+import: [05](05-skill-url-import.md)), the conventions extractor, and an **API Contract**
+agent with its control experiment (the user's decision, 2026-10-03: one new agent only).
 
 ## API / Data
 
@@ -100,17 +100,17 @@ experiment (the user's decision, 2026-10-03: one new agent only).
 | Contract | Shape |
 | -------- | ----- |
 | `SkillName` (`knowledge.ts:124`) | kebab-case slug, 1–64 chars, unique per workspace |
-| `Skill` (`knowledge.ts:137`) | `id, name, description, type, source, body, enabled, version, evidence_files?`, `agent_count?` (agents with it linked **and** enabled) |
-| `SkillCreate` (`knowledge.ts:153`) | `name, description?, type? (default custom), body (non-blank, ≤ 40,000), enabled?, source?: manual \| imported, imported_from?` |
-| `SkillUpdate` (`knowledge.ts:169`) | any subset of `name, description, type, body, enabled` |
-| `SkillVersion` (`knowledge.ts:179`) | `skill_id, version, name, description, type, body, note, created_at` |
-| `SkillAgentUse` (`knowledge.ts:193`) | `agent_id, agent_name, agent_enabled, order` |
-| `SkillImportRequest` (`knowledge.ts:205`) | `filename, content_base64` (≤ 699,052 chars ⇒ ≤ 512 KiB raw, inside the 1 MiB body limit) |
-| `SkillImportPreview` (`knowledge.ts:239`) | `draft {name, description, type, body}, source_file, skipped [{path, reason}], warnings [{code, detail?}], name_taken` |
-| `Agent.skill_count` (`knowledge.ts:401`) | enabled links |
-| `AgentSkillLink` (`knowledge.ts:424`) | `agent_id, skill_id, order, enabled` |
-| `AgentSkillsUpdate` (`knowledge.ts:445`) | `links: [{skill_id, enabled}]` (array order = prompt order) \| `skill_ids` (all enabled) \| `skill_id` + `order?`; duplicates in `links` are a 422 |
-| `AgentVersionConfig` (`knowledge.ts:468`) | `skills` = ids of the **enabled** links in order; `skill_links` (optional) = every link with its flag |
+| `Skill` (`knowledge.ts:137`) | `id, name, description, type, source, body, enabled, version, evidence_files?`, `agent_count?` (agents with it linked **and** enabled), `injection_detected` (computed on read, [05](05-skill-url-import.md)) |
+| `SkillCreate` (`knowledge.ts:159`) | `name, description?, type? (default custom), body (non-blank, ≤ 40,000), enabled?, source?: manual \| imported, imported_from?` |
+| `SkillUpdate` (`knowledge.ts:175`) | any subset of `name, description, type, body, enabled` |
+| `SkillVersion` (`knowledge.ts:185`) | `skill_id, version, name, description, type, body, note, created_at` |
+| `SkillAgentUse` (`knowledge.ts:199`) | `agent_id, agent_name, agent_enabled, order` |
+| `SkillImportRequest` (`knowledge.ts:211`) | `filename, content_base64` (≤ 699,052 chars ⇒ ≤ 512 KiB raw, inside the 1 MiB body limit) |
+| `SkillImportPreview` (`knowledge.ts:245`) | `draft {name, description, type, body}, source_file, skipped [{path, reason}], warnings [{code, detail?}], name_taken` |
+| `Agent.skill_count` (`knowledge.ts:443`) | enabled links |
+| `AgentSkillLink` (`knowledge.ts:466`) | `agent_id, skill_id, order, enabled` |
+| `AgentSkillsUpdate` (`knowledge.ts:487`) | `links: [{skill_id, enabled}]` (array order = prompt order) \| `skill_ids` (all enabled) \| `skill_id` + `order?`; duplicates in `links` are a 422 |
+| `AgentVersionConfig` (`knowledge.ts:510`) | `skills` = ids of the **enabled** links in order; `skill_links` (optional) = every link with its flag |
 | `PromptSkillBlock` (`trace.ts:43`) | `id, name, version?, tokens, text?`; `PromptAssembly.skill_blocks` (`trace.ts:57`), nullish so older traces parse |
 
 **Routes** — new, `src/modules/skills/routes.ts`
@@ -146,11 +146,11 @@ frontmatter `name`, `description`, `type`) or a `.zip` skill folder; nothing is 
 disk or executed.
 - Caps (`constants.ts:4-19`): upload 512 KiB; ≤ 100 archive entries; ≤ 2 MiB declared
   uncompressed in total; the core markdown ≤ 256 KiB; frontmatter ≤ 8 KiB; ≤ 10 YAML aliases.
-- Two passes over a zip (`import-parser.ts:67-110`): the first lists names and declared
+- Two passes over a zip (`import-parser.ts:69-112`): the first lists names and declared
   sizes and inflates nothing; the second inflates only the core file, into a buffer of its
   declared size.
 - The core is the shallowest `SKILL.md`, else the only markdown file
-  (`domain.ts:194-239`); several at one level, or none, is a 422.
+  (`domain.ts:200-245`); several at one level, or none, is a 422.
 - Every other entry is listed in `skipped` with a reason: `script` (under `scripts/` or a
   script / binary extension), `not_markdown`, `extra_markdown`, `os_metadata`,
   `unsafe_path` (absolute or `..`). `too_large` is reserved.
@@ -161,7 +161,7 @@ disk or executed.
   `large_body` (> 4000 tokens), `skipped_file_referenced` (the body names a skipped file).
 - Refusals are a 422 with `details.reason`: `empty_file`, `too_large`, `not_zip`,
   `unsupported_type`, `too_many_entries`, `corrupt_archive`, `not_text`, `no_skill`,
-  `ambiguous_skill`.
+  `ambiguous_skill`, `empty_body`, `body_too_long`.
 
 **Prompt.** The engine renders each enabled skill (`renderSkill`,
 `../../reviewer-core/src/prompt.ts:82-86`) as
@@ -189,7 +189,8 @@ A DB failure here fails the run. Tokens are an estimate, `ceil(chars / 4)`
 **Trace.** `prompt_assembly.skills` is the joined block; `prompt_assembly.skill_blocks`
 holds each skill's `id`, `name`, `version`, `tokens` and rendered `text`. A run that fails
 after loading its skills keeps both in its trace (`run-executor.ts:335,462-469`). A
-disabled skill — off globally or off for the agent — appears in neither, nor in the log.
+disabled skill — off globally or off for the agent — appears in neither, nor in the log; a skill
+blocked by the injection gate appears in neither and is counted in `skills: N blocked …` ([05](05-skill-url-import.md)).
 
 ## Acceptance criteria
 

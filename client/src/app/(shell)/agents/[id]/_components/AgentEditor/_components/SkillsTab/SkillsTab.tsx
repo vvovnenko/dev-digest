@@ -10,12 +10,14 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Badge, Checkbox, EmptyState, ErrorState, Icon, Skeleton, TextInput } from "@devdigest/ui";
 import { SkillTypeBadge } from "@/components/skill-type-badge";
+import { InjectionBadge } from "@/components/injection-badge";
 import { useAgentSkills, useSetAgentSkills } from "@/lib/hooks/agents";
 import { useSkills } from "@/lib/hooks/skills";
 import { DRAG_MIME } from "./constants";
 import {
   countEnabled,
   filterRows,
+  isRowLive,
   mergeAgentSkills,
   moveRow,
   sameRows,
@@ -167,6 +169,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
       <ul style={s.list} aria-label={t("skills.title")}>
         {visible.map((row) => {
           const { skill } = row;
+          const blocked = skill.injection_detected;
           const draggable = !filtering && !lift;
           return (
             <li
@@ -188,7 +191,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                 if (overId !== skill.id) setOverId(skill.id);
               }}
               onDrop={(e) => onDrop(e, skill.id)}
-              style={{ ...s.row(row.enabled, overId === skill.id && dragId !== skill.id, lift?.id === skill.id), listStyle: "none" }}
+              style={{ ...s.row(isRowLive(row), overId === skill.id && dragId !== skill.id, lift?.id === skill.id, blocked), listStyle: "none" }}
             >
               <button
                 type="button"
@@ -213,7 +216,8 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                 <Icon.Menu size={15} />
               </button>
               <Checkbox
-                checked={row.enabled}
+                checked={isRowLive(row)}
+                disabled={blocked}
                 onChange={() => commit(toggleRow(rows, skill.id))}
                 label={
                   <span className="mono" style={s.name}>
@@ -222,10 +226,16 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                 }
               />
               <div style={s.rowEnd}>
-                {!skill.enabled && (
-                  <span title={t("skills.globallyDisabledTitle")}>
-                    <Badge color="var(--text-muted)">{t("skills.globallyDisabled")}</Badge>
+                {blocked ? (
+                  <span title={t("skills.injectionTitle")}>
+                    <InjectionBadge />
                   </span>
+                ) : (
+                  !skill.enabled && (
+                    <span title={t("skills.globallyDisabledTitle")}>
+                      <Badge color="var(--text-muted)">{t("skills.globallyDisabled")}</Badge>
+                    </span>
+                  )
                 )}
                 <SkillTypeBadge type={skill.type} />
                 <Link href={`/skills/${skill.id}`} aria-label={t("skills.openSkill", { name: skill.name })} style={s.open}>

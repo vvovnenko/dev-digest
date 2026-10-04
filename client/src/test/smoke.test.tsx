@@ -21,6 +21,9 @@ describe("web smoke (both themes)", () => {
       // a few representative components are present
       expect(screen.getAllByText("Primary").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Critical").length).toBeGreaterThan(0);
+      // the disabled Toggle and Checkbox demos (the vendored `disabled` prop)
+      expect(screen.getAllByRole("switch").some((el) => (el as HTMLButtonElement).disabled)).toBe(true);
+      expect(screen.getByRole("checkbox", { name: "Blocked (disabled)" })).toBeDisabled();
     });
   });
 

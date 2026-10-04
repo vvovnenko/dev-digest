@@ -97,7 +97,7 @@ using `container.db` or calling `container.<member>.<method>(` — is counted by
   writes events.
 - Producers in the application ring publish through a port (`RunEvents`), never by
   importing `platform/sse.ts`: the bus belongs to the container, one per app
-  (`src/platform/container.ts:121`, overridable in tests).
+  (`src/platform/container.ts:124`, overridable in tests).
 - A stream must end and must let go: `reviews/routes.ts` 404s another workspace's run,
   replays the persisted trace for a finished one (`:76`), sends a heartbeat comment while
   idle (`:111`) and releases its subscription on the response's `close` (`:126`) — the

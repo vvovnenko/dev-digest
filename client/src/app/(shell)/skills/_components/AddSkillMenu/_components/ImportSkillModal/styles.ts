@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-/** Co-located styles for ImportSkillDrawer. */
+/** Co-located styles for ImportSkillModal. */
 export const s = {
   body: { padding: 24, display: "flex", flexDirection: "column", gap: 16 } satisfies CSSProperties,
   footer: { display: "flex", gap: 10, justifyContent: "flex-end" } satisfies CSSProperties,

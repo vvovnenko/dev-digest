@@ -35,6 +35,7 @@ import type {
   PrDiffStats,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
+import { fetchErrors, isHtmlContentType, type FetchedFile, type UrlFetcher } from './http/safe-fetch.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -354,5 +355,33 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+// ---------- Mock URL fetcher (skill URL import) ----------
+/** What a URL answers: a body (content type default `text/plain`, optional redirect target) or an error to throw. */
+export type MockUrlReply = { body: string | Uint8Array; contentType?: string; finalUrl?: string } | Error;
+
+/**
+ * No network: answers from a map keyed by `url.href`. An unknown URL is the
+ * real adapter's 502 `upstream_status` 404; the byte cap (422 `too_large`) and
+ * the HTML refusal (422 `html_page`) apply as they do there.
+ */
+export class MockUrlFetcher implements UrlFetcher {
+  /** Every requested href, in order. */
+  public calls: string[] = [];
+
+  constructor(private replies: Record<string, MockUrlReply> = {}) {}
+
+  async fetch(url: URL, limits: { maxBytes: number }): Promise<FetchedFile> {
+    this.calls.push(url.href);
+    const reply = this.replies[url.href];
+    if (reply === undefined) throw fetchErrors.upstreamStatus(404);
+    if (reply instanceof Error) throw reply;
+    const contentType = reply.contentType ?? 'text/plain; charset=utf-8';
+    if (isHtmlContentType(contentType)) throw fetchErrors.htmlPage();
+    const bytes = typeof reply.body === 'string' ? new TextEncoder().encode(reply.body) : reply.body;
+    if (bytes.length > limits.maxBytes) throw fetchErrors.tooLarge(limits.maxBytes);
+    return { bytes, contentType, finalUrl: new URL(reply.finalUrl ?? url.href) };
   }
 }

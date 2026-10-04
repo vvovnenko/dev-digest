@@ -80,3 +80,8 @@ Nothing is saved until you confirm.
 
 **Trust:** an imported skill is someone else's instructions inside your agent's
 prompt. Read the whole body before saving, just as you would review a pull request.
+
+A skill can also be imported from a raw `https://` URL (**Skills → Add Skill → Import from
+URL**): the server fetches the file and saves it at once, with no preview, so read it on its
+page afterwards. Every skill is checked for prompt-injection patterns: one that matches is
+saved but blocked (it can't be enabled, and runs leave it out) until an edit makes it clean.

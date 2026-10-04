@@ -22,6 +22,7 @@ const SKILL: Skill = {
   body: "b",
   enabled: true,
   version: 1,
+  injection_detected: false,
 };
 
 const renderTab = () =>

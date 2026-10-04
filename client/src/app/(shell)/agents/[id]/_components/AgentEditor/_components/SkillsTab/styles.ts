@@ -8,13 +8,14 @@ export const s = {
   filter: { marginLeft: "auto", width: 300 } satisfies CSSProperties,
   hint: { fontSize: 14, color: "var(--text-secondary)", marginBottom: 18 } satisfies CSSProperties,
   list: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
-  row: (enabled: boolean, over: boolean, lifted: boolean): CSSProperties => ({
+  /** A blocked row (prompt injection) gets a red border unless a drag or lift is on it. */
+  row: (enabled: boolean, over: boolean, lifted: boolean, blocked: boolean): CSSProperties => ({
     display: "flex",
     alignItems: "center",
     gap: 12,
     padding: "10px 14px",
     borderRadius: 8,
-    border: `1px solid ${over || lifted ? "var(--accent)" : "var(--border)"}`,
+    border: `1px solid ${over || lifted ? "var(--accent)" : blocked ? "var(--crit)" : "var(--border)"}`,
     background: enabled ? "var(--bg-elevated)" : "var(--bg-surface)",
     boxShadow: lifted ? "0 0 0 2px var(--accent-bg)" : undefined,
   }),

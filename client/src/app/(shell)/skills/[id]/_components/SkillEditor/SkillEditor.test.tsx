@@ -26,6 +26,7 @@ const SKILL: Skill = {
   body: "## Rule",
   enabled: true,
   version: 1,
+  injection_detected: false,
 };
 
 const ui = (tab: string) => (

@@ -16,6 +16,7 @@ const SKILL: Skill = {
   body: "## Rule\nFlag it. ![x](https://tracker.test/p.gif)",
   enabled: true,
   version: 1,
+  injection_detected: false,
 };
 
 const renderTab = (skill: Skill = SKILL) =>

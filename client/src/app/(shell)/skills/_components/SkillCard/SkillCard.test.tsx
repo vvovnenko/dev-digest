@@ -30,6 +30,7 @@ const SKILL: Skill = {
   body: "## Rule",
   enabled: true,
   version: 3,
+  injection_detected: false,
   agent_count: 2,
 };
 
@@ -55,6 +56,18 @@ describe("SkillCard", () => {
     render(ui({ onClick }));
     await user.click(screen.getByRole("switch", { name: "Enable branch-coverage" }));
     expect(update).toHaveBeenCalledWith({ id: "s1", patch: { enabled: false } });
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("shows a blocked skill off with a disabled toggle, even when it is stored enabled", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(ui({ onClick, skill: { ...SKILL, enabled: true, injection_detected: true } }));
+    const toggle = screen.getByRole("switch", { name: "Enable branch-coverage" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).toBeDisabled();
+    await user.click(toggle);
+    expect(update).not.toHaveBeenCalled();
     expect(onClick).not.toHaveBeenCalled();
   });
 

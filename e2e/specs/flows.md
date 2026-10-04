@@ -133,7 +133,7 @@ Read-only. `set viewport 1280 1600` (as in 09), `open /skills`, `wait --url /ski
   (`../client/src/app/(shell)/skills/[id]/_components/SkillEditorView/constants.ts:2,4`).
 - `wait --text "Rendered as the reviewing agent receives it."` (the tab's caption,
   `../client/src/app/(shell)/skills/[id]/_components/SkillEditor/_components/PreviewTab/PreviewTab.tsx:24`,
-  `../client/messages/en/skills.json:209`) and `wait --text "When to apply:"`: the rendered block
+  `../client/messages/en/skills.json:211`) and `wait --text "When to apply:"`: the rendered block
   carries the skill's description as that line (`../client/src/lib/skills.ts:28`,
   the engine's `../reviewer-core/src/prompt.ts:84`).
 
@@ -150,14 +150,14 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
 - `wait --url tab=skills`: `?tab=` accepts `config|skills`
   (`../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/constants.ts:2`, set at `../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/AgentEditorView.tsx:34`).
 - `wait --text "3 of 3 enabled"`: the tab's pill, enabled links of all workspace skills
-  (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:153`,
+  (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`,
   `../client/messages/en/agents.json:95`) — the seed's three skills, all linked and enabled.
 
 ### 09 — Run a review on PR #482, watch it live, accept its finding and open its trace
 
 The one flow that writes, so it sorts last. It needs the API's fake LLM
 (`DEVDIGEST_FAKE_LLM=1`, `../scripts/e2e.sh:47-49`, `../.github/workflows/e2e-web.yml:7-9`):
-`../server/src/platform/container.ts:256` hands every agent a `FakeReviewLlm`, which answers
+`../server/src/platform/container.ts:259` hands every agent a `FakeReviewLlm`, which answers
 with one WARNING titled "Fake finding on the first added line" on the first added line of
 the prompt's diff (`../server/src/adapters/llm/fake.ts:17-18,21,45`). With no clone the diff
 comes from the stored patches (`../server/src/adapters/git/pr-diff.ts:19-29`), so the seed's one
@@ -209,9 +209,9 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | src/config.ts | 05 | seed, `../server/src/db/seed.ts:134` |
 | Security Reviewer | 03 | seed, `../server/src/db/seed.ts:253` |
 | branch-coverage · Open branch-coverage (`aria-label`) | 08 | seed `../server/src/db/seed-skills.ts:21`; message `../client/messages/en/skills.json:109` (`../client/src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:56`) |
-| Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:209`; block format `../client/src/lib/skills.ts:28` (= `../reviewer-core/src/prompt.ts:84`) |
+| Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:211`; block format `../client/src/lib/skills.ts:28` (= `../reviewer-core/src/prompt.ts:84`) |
 | Open Test Quality Reviewer (`aria-label`) · Skills (tab button) | 08 | messages `../client/messages/en/agents.json:7,51`; seed name `../server/src/db/seed.ts:18` |
-| 3 of 3 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:153`) over the seed's three linked skills |
+| 3 of 3 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`) over the seed's three linked skills |
 | Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:80,82` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
 | Run Review · Run all enabled agents | 09 | messages `../client/messages/en/prReview.json:52,49` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:87,65`) |
 | Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:93`) |

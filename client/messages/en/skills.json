@@ -167,6 +167,8 @@
       "skipped_file_referenced": "The body refers to {detail}, which was not imported."
     },
     "nameTaken": "A skill with this name already exists — rename it before saving.",
+    "nameLabel": "Skill name",
+    "nameHint": "Optional — taken from the file if blank.",
     "another": "Choose another file",
     "cancel": "Cancel",
     "save": "Save skill",
@@ -241,5 +243,22 @@
     "disabled": "agent disabled",
     "empty": "No agent uses this skill yet. Attach it from an agent's Skills tab.",
     "loadError": "Could not load the agents using this skill."
+  },
+  "importUrl": {
+    "menuItem": "Import from URL",
+    "title": "Import skill from URL",
+    "subtitle": "The server fetches the file, checks it and saves it. A skill with prompt-injection patterns is saved but blocked.",
+    "urlLabel": "URL (https:// only)",
+    "urlPlaceholder": "https://raw.githubusercontent.com/org/repo/main/skill.md",
+    "urlInvalid": "Enter an https:// URL",
+    "nameLabel": "Skill name",
+    "nameHint": "Optional — derived from the first heading if blank.",
+    "submit": "Import from URL",
+    "importing": "Importing…"
+  },
+  "injection": {
+    "bannerTitle": "INJECTION DETECTED — DO NOT ENABLE",
+    "bannerBody": "This skill contains prompt injection patterns. It has been automatically blocked.",
+    "badge": "Injection detected"
   }
 }

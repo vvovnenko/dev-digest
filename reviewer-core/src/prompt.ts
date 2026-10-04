@@ -6,8 +6,8 @@ import type { ChatMessage, PromptAssembly, PromptSkillBlock } from '@devdigest/s
  * ALL external content (diff, PR body, code, specs) is UNTRUSTED DATA, never
  * instructions. We wrap it in clearly-delimited blocks and add a system rule that
  * content inside delimiters is data only. Skills are the exception: they are
- * instructions the workspace owner wrote or confirmed (an import is previewed and
- * saved by hand), so they go in unwrapped.
+ * instructions the workspace owner wrote or imported, and the server keeps a skill
+ * that matches prompt-injection patterns out of runs, so they go in unwrapped.
  */
 
 // The ONE shared, trusted defense. assemblePrompt appends it to every agent's
@@ -47,8 +47,8 @@ const MAX_PR_DESCRIPTION_CHARS = 4000;
 const MAX_PR_TITLE_CHARS = 256;
 
 /**
- * One enabled skill, already resolved by the caller (DB in the studio, fs in a
- * runner). Trusted text: the user wrote it or confirmed an import's preview.
+ * One enabled skill, already resolved by the caller (DB in the studio, fs in a runner).
+ * Trusted text: the owner wrote or imported it; the server keeps injection-flagged ones out.
  */
 export interface PromptSkill {
   /** Stable id echoed into the trace (a DB uuid, or a slug in a runner). */

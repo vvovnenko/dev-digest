@@ -80,8 +80,8 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
 | `["agent", id]` | `useAgent` → `GET /agents/:id` (`agents.ts:26-32`) | — | update sets data, delete removes it (`agents.ts:57,68`); a skill-links save invalidates it (`agents.ts:121`) |
 | `agentSkillKeys.links(id)` | `useAgentSkills` → `GET /agents/:id/skills` (`agents.ts:84-90`) | — | `useSetAgentSkills` → `POST /agents/:id/skills {links}`: optimistic, rolled back on error, one agent's saves run in order (`scope`) (`agents.ts:97-125`) |
 | `["provider-models", p]` | `useProviderModels` → `GET /providers/:p/models` (`agents.ts:74-81`) | — | `useTestConnection` when `ok` (`core.ts:52`) |
-| `skillKeys.list` | `useSkills` → `GET /skills` (`skills.ts:17-22`) | — | every skill mutation invalidates `skillKeys.all` (`skills.ts:56,73,85,105`); a skill-links save (`agents.ts:122`) |
-| `skillKeys.detail(id)` | `useSkill` → `GET /skills/:id` (`skills.ts:24-30`) | — | create / update / restore set data, delete removes it (`skills.ts:55,72,104,84`) |
+| `skillKeys.list` | `useSkills` → `GET /skills` (`skills.ts:17-22`) | — | every skill mutation invalidates `skillKeys.all` (`skills.ts:56,73,85,105,129`); a skill-links save (`agents.ts:122`) |
+| `skillKeys.detail(id)` | `useSkill` → `GET /skills/:id` (`skills.ts:24-30`) | — | create / update / restore / URL import set data, delete removes it (`skills.ts:55,72,104,128,84`) |
 | `skillKeys.versions(id)` | `useSkillVersions` → `GET /skills/:id/versions` (`skills.ts:33-39`) | — | `skillKeys.all` invalidations |
 | `skillKeys.agents(id)` | `useSkillAgents` → `GET /skills/:id/agents` (`skills.ts:42-48`) | — | `skillKeys.all` invalidations |
 | `prKeys.runs(prId)` | `usePrRuns` → `GET /pulls/:id/runs` (`reviews.ts:27-35`) | every 4 s while a run is `running` | run review, delete run and a finished run via `prKeys.all` (`reviews.ts:133,67,54`); cancel (`reviews.ts:76`) |

@@ -3,6 +3,7 @@ import type { AgentSkillLink, Skill } from "@devdigest/shared";
 import {
   countEnabled,
   filterRows,
+  isRowLive,
   mergeAgentSkills,
   moveRow,
   sameRows,
@@ -19,6 +20,7 @@ const skill = (id: string, name: string, extra: Partial<Skill> = {}): Skill => (
   body: "body",
   enabled: true,
   version: 1,
+  injection_detected: false,
   ...extra,
 });
 const link = (skill_id: string, order: number, enabled = true): AgentSkillLink => ({
@@ -77,6 +79,20 @@ describe("row edits", () => {
     expect(countEnabled(next)).toBe(2);
     expect(sameRows(next, rows)).toBe(false);
     expect(sameRows(toggleRow(next, "b"), rows)).toBe(true);
+  });
+
+  it("a blocked skill's row is not live, can't be toggled and keeps its stored flag", () => {
+    const flagged = mergeAgentSkills(
+      SKILLS.map((sk) => (sk.id === "a" ? { ...sk, injection_detected: true } : sk)),
+      [link("a", 0), link("b", 1)],
+    );
+    expect(flagged.map(isRowLive)).toEqual([false, true, false, false]);
+    expect(countEnabled(flagged)).toBe(1);
+    expect(sameRows(toggleRow(flagged, "a"), flagged)).toBe(true);
+    expect(toLinks(moveRow(flagged, 0, 1)).slice(0, 2)).toEqual([
+      { skill_id: "b", enabled: true },
+      { skill_id: "a", enabled: true },
+    ]);
   });
 
   it("filterRows matches name, description or type, case-insensitively", () => {

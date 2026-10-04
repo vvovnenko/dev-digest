@@ -31,7 +31,7 @@ dropped before anyone sees it.
     (row → DTO), `constants.ts` (caps, timeout, rate limit).
   - Registered in `src/modules/index.ts:35`.
 - **Server, changed:**
-  - `src/platform/container.ts:168-175`: the `conventionsRepo` getter, and
+  - `src/platform/container.ts:171-178`: the `conventionsRepo` getter, and
     `featureModel(ws, id)` → `resolveFeatureModel(settingsRepo, …)`. That gives
     `settings/feature-models.ts` its first production caller, so its
     `no-unreachable-from-entry` exemption in `.dependency-cruiser.cjs` is gone.
@@ -204,6 +204,9 @@ user can edit every field:
 - version 1, `source: extracted`;
 - `evidence_files` = the accepted candidates' paths;
 - v1 note "Created from N conventions in <repo>".
+- The created skill passes the same injection gate as any other: its `Skill` DTO
+  (`src/modules/conventions/helpers.ts`) carries `injection_detected`, and a flagged skill is
+  saved but blocked ([05](05-skill-url-import.md)).
 
 Only accepted candidates feed the draft and the evidence. Rejected ones never do.
 

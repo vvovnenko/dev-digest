@@ -12,7 +12,7 @@ vi.mock("@/lib/hooks/skills", () => ({
   useCreateSkill: () => ({ mutate: create, isPending: false }),
 }));
 
-import { ImportSkillDrawer } from "./ImportSkillDrawer";
+import { ImportSkillModal } from "./ImportSkillModal";
 
 afterEach(() => {
   cleanup();
@@ -34,19 +34,52 @@ const PREVIEW: SkillImportPreview = {
   name_taken: false,
 };
 
-const renderDrawer = (onClose = vi.fn()) =>
+const renderModal = (onClose = vi.fn()) =>
   render(
     <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
-      <ImportSkillDrawer onClose={onClose} />
+      <ImportSkillModal onClose={onClose} />
     </NextIntlClientProvider>,
   );
 
 const zip = (bytes = "PK\x03\x04data", name = "flaky.zip") => new File([bytes], name, { type: "application/zip" });
 
-describe("ImportSkillDrawer", () => {
+describe("ImportSkillModal", () => {
+  it("asks for an optional skill name first, above the file chooser", () => {
+    renderModal();
+    const nameInput = screen.getByLabelText("Skill name");
+    const fileInput = screen.getByLabelText("Choose file…");
+    expect(nameInput.compareDocumentPosition(fileInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("Optional — taken from the file if blank.")).toBeInTheDocument();
+  });
+
+  it("keeps a name typed before the file and saves the skill under it", async () => {
+    const user = userEvent.setup();
+    parse.mockImplementation((_input, opts) => opts.onSuccess({ ...PREVIEW, name_taken: true }));
+    create.mockImplementation((_input, opts) => opts.onSuccess({ id: "s8" }));
+    renderModal();
+    await user.type(screen.getByLabelText("Skill name"), "my-flaky");
+    await user.upload(screen.getByLabelText("Choose file…"), zip());
+    await waitFor(() => expect(screen.getByText("Read before saving")).toBeInTheDocument());
+    // The derived name is taken, but the typed one replaces it.
+    expect(screen.getByLabelText("Skill name")).toHaveValue("my-flaky");
+    expect(screen.queryByText(/already exists/)).toBeNull();
+    expect(screen.getByText("my-flaky", { selector: "h3" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Save skill/ }));
+    expect(create.mock.calls[0]![0]).toMatchObject({ name: "my-flaky", source: "imported" });
+  });
+
+  it("fills a blank name from the file", async () => {
+    const user = userEvent.setup();
+    parse.mockImplementation((_input, opts) => opts.onSuccess(PREVIEW));
+    renderModal();
+    await user.upload(screen.getByLabelText("Choose file…"), zip());
+    await waitFor(() => expect(screen.getByLabelText("Skill name")).toHaveValue("flaky-test-patterns"));
+  });
+
   it("rejects a file over 512 KiB without a request", async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderModal();
     const big = zip();
     Object.defineProperty(big, "size", { value: 512 * 1024 + 1 });
     await user.upload(screen.getByLabelText("Choose file…"), big);
@@ -56,7 +89,7 @@ describe("ImportSkillDrawer", () => {
 
   it("rejects a file that is not .md or .zip", async () => {
     const user = userEvent.setup({ applyAccept: false });
-    renderDrawer();
+    renderModal();
     await user.upload(screen.getByLabelText("Choose file…"), new File(["echo hi"], "run.sh"));
     expect(screen.getByText("Only .md and .zip files can be imported.")).toBeInTheDocument();
     expect(parse).not.toHaveBeenCalled();
@@ -65,7 +98,7 @@ describe("ImportSkillDrawer", () => {
   it("sends the file as base64 and previews the draft with its skipped files and warnings", async () => {
     const user = userEvent.setup();
     parse.mockImplementation((_input, opts) => opts.onSuccess(PREVIEW));
-    renderDrawer();
+    renderModal();
     await user.upload(screen.getByLabelText("Choose file…"), zip("hello"));
     await waitFor(() => expect(parse).toHaveBeenCalled());
     expect(parse.mock.calls[0]![0]).toEqual({ filename: "flaky.zip", content_base64: btoa("hello") });
@@ -85,13 +118,13 @@ describe("ImportSkillDrawer", () => {
     const onClose = vi.fn();
     parse.mockImplementation((_input, opts) => opts.onSuccess(PREVIEW));
     create.mockImplementation((_input, opts) => opts.onSuccess({ id: "s7" }));
-    renderDrawer(onClose);
+    renderModal(onClose);
     await user.upload(screen.getByLabelText("Choose file…"), zip());
     await waitFor(() => expect(screen.getByText("Read before saving")).toBeInTheDocument());
     expect(create).not.toHaveBeenCalled();
 
-    await user.clear(screen.getByLabelText("Name"));
-    await user.type(screen.getByLabelText("Name"), "flaky-tests");
+    await user.clear(screen.getByLabelText("Skill name"));
+    await user.type(screen.getByLabelText("Skill name"), "flaky-tests");
     await user.click(screen.getByRole("button", { name: /Save skill/ }));
     expect(create.mock.calls[0]![0]).toEqual({
       name: "flaky-tests",
@@ -108,14 +141,14 @@ describe("ImportSkillDrawer", () => {
   it("blocks saving while the name is taken", async () => {
     const user = userEvent.setup();
     parse.mockImplementation((_input, opts) => opts.onSuccess({ ...PREVIEW, name_taken: true }));
-    renderDrawer();
+    renderModal();
     await user.upload(screen.getByLabelText("Choose file…"), zip());
     await waitFor(() =>
       expect(screen.getByText("A skill with this name already exists — rename it before saving.")).toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: /Save skill/ })).toBeDisabled();
 
-    await user.type(screen.getByLabelText("Name"), "-2");
+    await user.type(screen.getByLabelText("Skill name"), "-2");
     expect(screen.getByRole("button", { name: /Save skill/ })).toBeEnabled();
   });
 });

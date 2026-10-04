@@ -49,6 +49,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   - **2026-10-04** — Line evidence moved (the scan became a job): the `model(ws)` wiring is now `src/modules/conventions/routes.ts:39`. Evidence: `src/modules/conventions/routes.ts:39`
 - **2026-10-04** — A pre-staged column can't simply be dropped: `test/migrations-safety.test.ts` fails on any generated `DROP COLUMN` / `DROP TABLE` that isn't allow-listed, so `conventions.accepted` stayed and is written in sync with the new `status` (`accepted = status === 'accepted'`); the plugin contract `PluginConvention` still reads it. Evidence: `test/migrations-safety.test.ts:15-19`, `src/modules/conventions/domain.ts:361`
   - **2026-10-04** — Line evidence moved: `accepted` follows `status` at `src/modules/conventions/domain.ts:407`. Evidence: `src/modules/conventions/domain.ts:407`
+- **2026-10-04** — The skill injection gate is computed on read and `PUT /skills/:id` refuses `enabled: true` whenever the resulting text is flagged — even when the stored value is already `true` (URL imports are stored enabled) → a client must send only changed fields (ConfigTab's draft does); a save that echoes the full skill fails on every flagged skill. Evidence: `src/modules/skills/service.ts:76-79`, `src/modules/skills/domain.ts:92`
+- **2026-10-04** — `SkillImportUrlRequest`'s `z.string().url()` accepts `https://user:pw@…` and `https://host:8443/…`; only `parseImportUrl` refuses them (and the adapter re-checks every redirect hop) → never treat the contract as the URL-safety check. Evidence: `src/modules/skills/domain.ts:423-427`, `test/skills-url-import.it.test.ts:194-195`
 
 ## Tool & library notes
 
@@ -77,6 +79,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   - **2026-10-04** — Line evidence moved: the extract route's limit is now `src/modules/conventions/routes.ts:70`. Evidence: `src/modules/conventions/routes.ts:70`
 - **2026-10-04** — The two git clients disagree on a missing file: `MockGitClient.readFile` returns `''`, `SimpleGitClient.readFile` rejects (ENOENT from `realpath`, or a 400 `invalid_repo_path` outside the clone) → code that asks "does this file exist?" must treat both a throw and an empty string as missing, or a service test passes on mocks that the real adapter breaks. Evidence: `src/adapters/mocks.ts:321-323`, `src/adapters/git/simple-git.ts:207-213`
 - **2026-10-04** — `jobs.attempts` can't tell a retried job from a first-try success: `onRetry` writes the attempt number, then the success path overwrites it with `attempts: 1`, so a test asserting `{ status: 'done', attempts: 1 }` passes even when the handler was retried → count the handler's side effects (e.g. model calls) to prove "not retried". Evidence: `src/platform/jobs.ts:143-156`
+- **2026-10-04** — Node 22's `https.request` calls a custom `lookup` with `{ all: true }` (from `autoSelectFamily`) and skips `lookup` entirely when the host is an IP literal — an SSRF guard must answer in array form, check every resolved address, and check literal hosts itself before connecting; an `AppError` passed to the lookup callback reaches `req.on('error')` unchanged. Evidence: `src/adapters/http/safe-fetch.ts:143`, `src/adapters/http/safe-fetch.ts:325`
+- **2026-10-04** — `net.BlockList` judges an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) by its IPv4 rules but not a NAT64 one (`64:ff9b::/96`) → unwrap NAT64 to IPv4 yourself before the check; removing that unwrap failed only the NAT64 cases. Evidence: `src/adapters/http/safe-fetch.ts:71-97`
 
 ## Recurring errors & fixes
 
@@ -141,6 +145,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — Run cost for Anthropic/OpenAI agents (PriceBook catalog alias + current Claude prices): +3 (Codebase patterns nuance, Recurring errors & fixes, Doc drift)
 - **2026-10-04** — HW2 Conventions Extractor (module, migration 0016, container featureModel, tests, live scan on OpenRouter): +5 (Codebase patterns ×2, Tool & library notes ×2, Recurring errors & fixes)
 - **2026-10-04** — Conventions scan as a background job (scan row status, partial unique index, never-throw handler, boot reap, 202 + polling): +5 (What doesn't work ×2, Tool & library notes, Codebase patterns nuance, Recurring errors & fixes nuance) + 3 line-evidence notes
+- **2026-10-04** — Skill URL import + prompt-injection gate (route, SSRF-guarded adapter, detector, run-path split): +4 (Tool & library notes ×2, Codebase patterns ×2)
 
 ## Open questions
 

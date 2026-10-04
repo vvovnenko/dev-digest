@@ -51,4 +51,23 @@ export interface SkillStore {
 
 export interface SkillsDeps {
   skills: SkillStore;
+  fetcher: SkillFileFetcher;
+}
+
+/** A file fetched for a URL import. */
+export interface FetchedFile {
+  bytes: Uint8Array;
+  /** The response's `content-type`, when it sent one. */
+  contentType: string | null;
+  /** The URL the bytes came from, after redirects. */
+  finalUrl: URL;
+}
+
+/**
+ * Fetches a skill file over https: public addresses only (every redirect hop
+ * re-checked), at most `maxBytes`, never an HTML page. Satisfied structurally by
+ * the `SafeHttpsFetcher` adapter, wired as `container.urlFetcher`.
+ */
+export interface SkillFileFetcher {
+  fetch(url: URL, limits: { maxBytes: number }): Promise<FetchedFile>;
 }

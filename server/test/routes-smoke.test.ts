@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
-import { MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
+import { MockGitHubClient, MockLLMProvider, MockUrlFetcher } from '../src/adapters/mocks.js';
 
 /**
  * No-DB route smoke tests via app.inject(). `/health` and the validation/error
@@ -81,6 +81,18 @@ describe('routes (no DB)', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe('validation_error');
+    await app.close();
+  });
+
+  it('POST /skills/import/url refuses a non-https URL at the edge (422), before any fetch', async () => {
+    const fetcher = new MockUrlFetcher({ 'http://x/': { body: '# never fetched' } });
+    const app = await buildApp({ config, overrides: { urlFetcher: fetcher } });
+    for (const url of ['http://x', 'ftp://x/a.md', 'not a url']) {
+      const res = await app.inject({ method: 'POST', url: '/skills/import/url', payload: { url } });
+      expect(res.statusCode, url).toBe(422);
+      expect(res.json().error.code).toBe('validation_error');
+    }
+    expect(fetcher.calls).toEqual([]);
     await app.close();
   });
 });

@@ -28,6 +28,7 @@ const SKILL: Skill = {
   body: "## Rule",
   enabled: true,
   version: 2,
+  injection_detected: false,
 };
 
 const ui = (skill: Skill = SKILL) => (
@@ -80,6 +81,26 @@ describe("ConfigTab (skill)", () => {
     expect(saveButton()).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByLabelText("Name")).toHaveValue("branch-coverage");
+  });
+
+  it("shows the Enabled toggle off and disabled while the skill is blocked", async () => {
+    const user = userEvent.setup();
+    render(ui({ ...SKILL, enabled: true, injection_detected: true }));
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).toBeDisabled();
+    await user.click(toggle);
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it("a clean skill's Enabled toggle still edits the draft", async () => {
+    const user = userEvent.setup();
+    render(ui());
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await user.click(toggle);
+    await user.click(saveButton());
+    expect(mutate.mock.calls[0]![0]).toEqual({ id: "s1", patch: { enabled: false } });
   });
 
   it("marks the name on a 409", async () => {

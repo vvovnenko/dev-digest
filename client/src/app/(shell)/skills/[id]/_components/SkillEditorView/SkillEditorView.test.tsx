@@ -24,6 +24,7 @@ vi.mock("@/lib/hooks/skills", () => ({
   useDeleteSkill: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateSkill: () => ({ mutate: vi.fn(), isPending: false }),
   usePreviewSkillImport: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useImportSkillFromUrl: () => ({ mutate: vi.fn(), isPending: false }),
   useSkillVersions: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
   useRestoreSkillVersion: () => ({ mutate: vi.fn(), isPending: false }),
   useSkillAgents: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
@@ -47,6 +48,7 @@ const SKILL: Skill = {
   body: "## Rule\nFlag it.",
   enabled: false,
   version: 3,
+  injection_detected: false,
   agent_count: 1,
 };
 
@@ -83,6 +85,23 @@ describe("SkillEditorView", () => {
     renderView();
     await user.click(screen.getByRole("button", { name: "Versions" }));
     expect(replace).toHaveBeenCalledWith("/skills/s1?tab=versions&x=1");
+  });
+
+  it("warns above the header and badges a blocked skill instead of 'disabled'", () => {
+    data.skill = { ...SKILL, injection_detected: true };
+    renderView();
+    const banner = screen.getByRole("alert");
+    expect(banner).toHaveTextContent("INJECTION DETECTED — DO NOT ENABLE");
+    expect(banner).toHaveTextContent("This skill contains prompt injection patterns. It has been automatically blocked.");
+    expect(screen.getByText("Injection detected")).toBeInTheDocument();
+    expect(screen.queryByText("disabled")).not.toBeInTheDocument();
+  });
+
+  it("shows no banner or injection badge for a clean skill", () => {
+    data.skill = SKILL;
+    renderView();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("Injection detected")).not.toBeInTheDocument();
   });
 
   it("shows an error when the skill does not exist", () => {

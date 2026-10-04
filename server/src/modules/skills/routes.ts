@@ -7,6 +7,7 @@ import {
   SkillCreate,
   SkillImportPreview,
   SkillImportRequest,
+  SkillImportUrlRequest,
   SkillUpdate,
   SkillVersion,
 } from '@devdigest/shared';
@@ -32,10 +33,11 @@ const VersionParams = z.object({
  *   POST   /skills/:id/versions/:version/restore  → new version with vN's content
  *   GET    /skills/:id/agents                     → agents with it linked + enabled
  *   POST   /skills/import/preview                 → parse a .md/.zip into a draft (no write)
+ *   POST   /skills/import/url                     → fetch an https .md/.zip and save it (201)
  */
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
-  const service = new SkillsService({ skills: app.container.skillsRepo });
+  const service = new SkillsService({ skills: app.container.skillsRepo, fetcher: app.container.urlFetcher });
 
   app.get('/skills', { schema: { response: { 200: z.array(Skill) } } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
@@ -59,6 +61,21 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return service.previewImport(workspaceId, req.body);
+    },
+  );
+
+  // Fetches over the network and writes: a tighter limit than the preview's.
+  app.post(
+    '/skills/import/url',
+    {
+      schema: { body: SkillImportUrlRequest, response: { 201: Skill } },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const skill = await service.importFromUrl(workspaceId, req.body);
+      reply.status(201);
+      return skill;
     },
   );
 

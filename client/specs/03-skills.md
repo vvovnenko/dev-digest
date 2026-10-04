@@ -11,7 +11,7 @@ UI summary:
   edit of a vendored file, `src/vendor/ui/nav.ts` (HW2 adds Conventions the same way).
 - `/skills`: a grid of skill cards (name, type badge, source, description, a global
   enabled toggle, "N agents", delete), local search, and **Add Skill ▾** → Create from
-  scratch (a modal) or Import file… (a drawer: pick a `.md` / `.zip`, see the parsed draft,
+  scratch (a modal) or Import file… (a modal: an optional skill name first, then pick a `.md` / `.zip`, see the parsed draft,
   the skipped files and the warnings, then Save skill). A card opens `/skills/:id`.
 - `/skills/:id`: the cards on the left, and the tabs **Config** (enabled, name, the
   description as the skill's "When to apply" line, type, a line-numbered body editor with

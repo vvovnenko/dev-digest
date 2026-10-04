@@ -42,9 +42,9 @@ export function moveRow<T>(items: readonly T[], from: number, to: number): T[] {
   return next;
 }
 
-/** Flip one skill's checkbox, keeping every row's position. */
+/** Flip one skill's checkbox, keeping every row's position; a blocked row (`isRowLive`) stays as it is. */
 export function toggleRow(rows: readonly SkillRow[], skillId: string): SkillRow[] {
-  return rows.map((r) => (r.skill.id === skillId ? { ...r, enabled: !r.enabled } : r));
+  return rows.map((r) => (r.skill.id === skillId && !r.skill.injection_detected ? { ...r, enabled: !r.enabled } : r));
 }
 
 /** Rows whose name, description or type contains the query (case-insensitive). */
@@ -56,9 +56,17 @@ export function filterRows(rows: readonly SkillRow[], query: string): SkillRow[]
   );
 }
 
-/** How many rows are checked — the "N of M enabled" pill. */
+/**
+ * Whether the row shows checked: enabled for this agent AND its skill not blocked for prompt
+ * injection. A blocked row shows unchecked but keeps its stored flag, which `toLinks` sends.
+ */
+export function isRowLive(row: SkillRow): boolean {
+  return row.enabled && !row.skill.injection_detected;
+}
+
+/** How many rows are live (`isRowLive`) — the "N of M enabled" pill. */
 export function countEnabled(rows: readonly SkillRow[]): number {
-  return rows.filter((r) => r.enabled).length;
+  return rows.filter(isRowLive).length;
 }
 
 /** True when two row lists have the same skills in the same order with the same flags. */

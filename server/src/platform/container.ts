@@ -45,6 +45,7 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
+import { SafeHttpsFetcher, type UrlFetcher } from '../adapters/http/safe-fetch.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -69,6 +70,8 @@ export interface ContainerOverrides {
   tokenizer?: Tokenizer;
   /** Tests pass a bus with a short buffer TTL. */
   runBus?: RunBus;
+  /** Skill URL import — tests pass a `MockUrlFetcher` (no network). */
+  urlFetcher?: UrlFetcher;
 }
 
 export class Container {
@@ -320,5 +323,13 @@ export class Container {
     this.llmCache.clear();
     this._github = undefined;
     this._embedder = undefined;
+  }
+
+  private _urlFetcher?: UrlFetcher;
+
+  /** Fetches skill files for URL import: https only, public addresses, size-capped (SSRF guard). */
+  get urlFetcher(): UrlFetcher {
+    if (this.overrides.urlFetcher) return this.overrides.urlFetcher;
+    return (this._urlFetcher ??= new SafeHttpsFetcher());
   }
 }

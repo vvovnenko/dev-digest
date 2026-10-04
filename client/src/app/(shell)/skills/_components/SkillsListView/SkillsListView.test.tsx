@@ -16,6 +16,7 @@ vi.mock("@/lib/hooks/skills", () => ({
   useDeleteSkill: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateSkill: () => ({ mutate: vi.fn(), isPending: false }),
   usePreviewSkillImport: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useImportSkillFromUrl: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { SkillsListView } from "./SkillsListView";
@@ -37,6 +38,7 @@ const skill = (id: string, name: string, description = ""): Skill => ({
   body: "b",
   enabled: true,
   version: 1,
+  injection_detected: false,
   agent_count: 0,
 });
 

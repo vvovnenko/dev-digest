@@ -182,7 +182,7 @@ Rules:
 ## Composition: container + routes plugin
 
 ```ts
-// platform/container.ts:133-135 — the composition root builds edges lazily
+// platform/container.ts:136-138 — the composition root builds edges lazily
 get pullsRepo(): PullsRepository {
   return (this._pullsRepo ??= new PullsRepository(this.db));
 }

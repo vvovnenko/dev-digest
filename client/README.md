@@ -36,7 +36,7 @@ flowchart TD
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state<br/>POST /repos/:id/poll · /repos/:id/refresh"| API
   PR -->|"GET /pulls/:id · /reviews · /runs · /pulls/:id/comments · SSE /runs/:id/events<br/>POST /pulls/:id/review · /runs/:id/cancel · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills"| API
-  SKILLS -->|"/skills · /skills/:id · /skills/:id/(versions|agents)<br/>POST /skills/:id/versions/:version/restore · /skills/import/preview"| API
+  SKILLS -->|"/skills · /skills/:id · /skills/:id/(versions|agents)<br/>POST /skills/:id/versions/:version/restore · /skills/import/(preview|url)"| API
   CONV -->|"GET /repos/:id/conventions(/skill-draft)<br/>POST /repos/:id/conventions/(extract|deselect-all|skill) · PUT /conventions/:id"| API
   SETTINGS -->|"/settings · /providers"| API
 ```

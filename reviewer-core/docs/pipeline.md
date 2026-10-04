@@ -85,8 +85,8 @@ trace shows a whole-diff prompt that was never sent.
 - The task line is pushed **unwrapped** (`prompt.ts:175`), so it must hold no PR text: the
   PR's title and author arrive as `pr` and get their own `pr-meta` block (`prompt.ts:176-179`).
   Skills and memory (`- ` bullets) are unwrapped too (`prompt.ts:157-163`): skills are
-  instructions the user wrote or confirmed, each rendered by `renderSkill` as `### <name>`,
-  `When to apply: <description>` and the body, in the agent's order (`prompt.ts:82-86`).
+  instructions the user wrote or imported (the server keeps one that matches prompt-injection
+  patterns out of runs), each rendered by `renderSkill` as `### <name>`, `When to apply: <description>` and the body, in the agent's order (`prompt.ts:82-86`).
   The PR title/author, PR description, repo skeleton, each spec chunk (`spec-<i>`), callers
   and the diff go through `wrapUntrusted` (`prompt.ts:164-167,178,181,186,191,194`).
 - `wrapUntrusted` neutralises every opening or closing `untrusted` tag in the content,
@@ -102,13 +102,13 @@ trace shows a whole-diff prompt that was never sent.
 
 The guard says the PR title sits inside `<untrusted>` (`prompt.ts:19-20`), and it does: the
 server passes title and author as `pr` (`../server/src/modules/reviews/run-executor.ts:225`),
-and its task line carries only the PR number (`../server/src/modules/reviews/helpers.ts:76-86`).
+and its task line carries only the PR number (`../server/src/modules/reviews/helpers.ts:77-87`).
 
 ## 4. Provider call
 
 The server builds `OpenRouterProvider` (`src/llm/openrouter.ts`) for agents on
 `openrouter` — every seeded agent (`../server/src/db/seed.ts:14-15`) — and its own
-OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:251-283`).
+OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:254-286`).
 `OpenRouterProvider`:
 
 - It is the OpenAI SDK pointed at `https://openrouter.ai/api/v1`, with a 90 s timeout

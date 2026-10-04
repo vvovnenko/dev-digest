@@ -41,6 +41,7 @@ const skill = (id: string, name: string, extra: Partial<Skill> = {}): Skill => (
   body: "body",
   enabled: true,
   version: 1,
+  injection_detected: false,
   ...extra,
 });
 
@@ -102,6 +103,38 @@ describe("SkillsTab", () => {
     const row = screen.getByRole("checkbox", { name: "mocking-discipline" }).closest("li")!;
     expect(within(row).getByText("disabled globally")).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "Open mocking-discipline" })).toHaveAttribute("href", "/skills/s-mock");
+  });
+
+  it("shows a blocked skill unchecked and disabled with the injection badge, and leaves it out of the pill", async () => {
+    const user = userEvent.setup();
+    state.skills = state.skills!.map((sk) => (sk.id === "s-edge" ? { ...sk, injection_detected: true } : sk));
+    renderTab();
+    const box = screen.getByRole("checkbox", { name: "edge-case-checklist" });
+    expect(box).toHaveAttribute("aria-checked", "false");
+    expect(box).toBeDisabled();
+    const row = box.closest("li")!;
+    expect(within(row).getByText("Injection detected")).toBeInTheDocument();
+    expect(within(row).getByTitle("Prompt-injection patterns found — edit and save the skill to unblock it")).toBeInTheDocument();
+    expect(row.style.border).toContain("var(--crit)");
+    // Its link is still stored enabled, but it does not count.
+    expect(screen.getByText("0 of 3 enabled")).toBeInTheDocument();
+    await user.click(box);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("reordering keeps a blocked row's stored flag", () => {
+    state.skills = state.skills!.map((sk) => (sk.id === "s-edge" ? { ...sk, injection_detected: true } : sk));
+    renderTab();
+    const rows = within(screen.getByRole("list", { name: "Skills" })).getAllByRole("listitem");
+    const dt = dataTransfer();
+    fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
+    fireEvent.dragOver(rows[0]!, { dataTransfer: dt });
+    fireEvent.drop(rows[0]!, { dataTransfer: dt });
+    expect(sent()).toEqual([
+      { skill_id: "s-mock", enabled: false },
+      { skill_id: "s-edge", enabled: true },
+      { skill_id: "s-branch", enabled: false },
+    ]);
   });
 
   it("a tick saves the whole ordered list once, with the new flag", async () => {

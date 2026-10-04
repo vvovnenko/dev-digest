@@ -1,0 +1,1 @@
+export { InjectionBadge } from "./InjectionBadge";

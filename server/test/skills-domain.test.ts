@@ -8,6 +8,10 @@ import {
   editNote,
   fallbackNameSource,
   findHiddenChars,
+  firstHeading,
+  importFilenameFromUrl,
+  importNoteUrl,
+  parseImportUrl,
   restoreNote,
   slugifySkillName,
   splitFrontmatter,
@@ -162,5 +166,94 @@ describe('import text', () => {
     expect(() => buildImportDraft({ ...base, body: 'a'.repeat(40_001) })).toThrow(/longer than 40000/);
     const large = buildImportDraft({ ...base, body: 'a'.repeat(20_000) });
     expect(large.warnings.map((w) => w.code)).toContain('large_body');
+  });
+});
+
+describe('the injection gate (applySkillPatch `blocked`)', () => {
+  const off = { ...skill, enabled: false };
+  const refused = { statusCode: 422, details: { reason: 'injection_detected' } };
+
+  it('refuses only enabling a blocked skill', () => {
+    expect(() => applySkillPatch(off, { enabled: true }, undefined, true)).toThrow(/prompt injection patterns/);
+    try {
+      applySkillPatch(off, { enabled: true, body: 'still bad' }, undefined, true);
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toMatchObject(refused);
+    }
+    // Even when the stored flag is already on: `enabled: true` on a flagged result is refused.
+    expect(() => applySkillPatch(skill, { enabled: true }, undefined, true)).toThrow(/prompt injection/);
+  });
+
+  it('enabling a clean skill, disabling a flagged one and editing a flagged one all pass', () => {
+    expect(applySkillPatch(off, { enabled: true }, undefined, false)).toEqual({ set: { enabled: true }, snapshot: null });
+    expect(applySkillPatch(skill, { enabled: false }, undefined, true)).toEqual({ set: { enabled: false }, snapshot: null });
+    expect(applySkillPatch(skill, { body: 'Edited.' }, undefined, true)!.set).toEqual({ body: 'Edited.', version: 4 });
+    // The default is "not blocked", so existing callers are unchanged.
+    expect(applySkillPatch(off, { enabled: true })).toEqual({ set: { enabled: true }, snapshot: null });
+  });
+});
+
+describe('import from a URL', () => {
+  const reason = (raw: string) => {
+    try {
+      parseImportUrl(raw);
+      return 'ok';
+    } catch (err) {
+      return (err as { details: { reason: string } }).details.reason;
+    }
+  };
+
+  it('parseImportUrl takes https on the default port without credentials', () => {
+    expect(parseImportUrl('  https://raw.githubusercontent.com/a/b/main/SKILL.md ').href).toBe(
+      'https://raw.githubusercontent.com/a/b/main/SKILL.md',
+    );
+    expect(reason('https://example.com:443/a.md')).toBe('ok'); // the default port, spelled out
+    expect(reason('not a url')).toBe('invalid_url');
+    expect(reason(`https://example.com/${'a'.repeat(2048)}`)).toBe('invalid_url');
+    expect(reason('http://example.com/a.md')).toBe('not_https');
+    expect(reason('file:///etc/passwd')).toBe('not_https');
+    expect(reason('https://user@example.com/a.md')).toBe('credentials_in_url');
+    expect(reason('https://:pw@example.com/a.md')).toBe('credentials_in_url');
+    expect(reason('https://example.com:8443/a.md')).toBe('non_default_port');
+  });
+
+  it('importFilenameFromUrl gives the parser a file name it can use', () => {
+    const name = (url: string) => importFilenameFromUrl(new URL(url));
+    expect(name('https://h/org/repo/main/skills/flaky-tests/SKILL.md')).toBe('flaky-tests/SKILL.md');
+    expect(name('https://h/SKILL.md')).toBe('SKILL.md');
+    expect(name('https://h/a/skill.MD')).toBe('a/skill.MD');
+    expect(name('https://h/a/rules.markdown')).toBe('rules.markdown');
+    expect(name('https://h/a/pack.zip')).toBe('pack.zip');
+    expect(name('https://h/a/pack.skill')).toBe('pack.skill');
+    expect(name('https://gist.githubusercontent.com/u/abc123/raw')).toBe('raw.md'); // no extension
+    expect(name('https://h/a/notes.txt')).toBe('notes.txt.md');
+    expect(name('https://h/a/Edge%20Cases.md?x=1')).toBe('Edge Cases.md'); // %-decoded, query ignored
+    expect(name('https://h/a/evil%2F..%2Fx.md')).toBe('evil-..-x.md'); // a decoded slash can't make a folder
+    expect(name('https://h/a/bad%E0%A4%A.md')).toBe('bad%E0%A4%A.md'); // malformed escape kept as is
+    expect(name('https://h/skills/')).toBe('skill.md'); // trailing slash
+    expect(name('https://h')).toBe('skill.md');
+  });
+
+  it('importNoteUrl drops the query and the fragment', () => {
+    expect(importNoteUrl(new URL('https://h.example/a/b.md?token=s3cret#x'))).toBe('https://h.example/a/b.md');
+    expect(importNoteUrl(new URL('https://h.example:443/a.md'))).toBe('https://h.example/a.md');
+  });
+
+  it('firstHeading finds the first ATX heading outside code fences', () => {
+    expect(firstHeading('intro\n# Malicious Skill\n## Rule')).toBe('Malicious Skill');
+    expect(firstHeading('```md\n# not this\n```\n## Real one ##')).toBe('Real one');
+    expect(firstHeading('~~~~\n# no\n~~~\n# still fenced\n~~~~\n#   Spaced   ')).toBe('Spaced');
+    expect(firstHeading('#hashtag\n#\n   # Indented')).toBe('Indented');
+    expect(firstHeading('    # four spaces is code\ntext')).toBe('');
+    expect(firstHeading('no headings')).toBe('');
+  });
+
+  it('firstHeading stays linear on a long hostile line', () => {
+    const line = `# ${' '.repeat(200_000)}x`;
+    const t0 = performance.now();
+    expect(firstHeading(line)).toBe('x');
+    expect(firstHeading(`#${' \t'.repeat(100_000)}#`.repeat(1))).toBe('');
+    expect(performance.now() - t0).toBeLessThan(200);
   });
 });

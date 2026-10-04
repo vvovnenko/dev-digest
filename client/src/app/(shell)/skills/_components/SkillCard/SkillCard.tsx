@@ -44,7 +44,7 @@ export function SkillCard({
 
   return (
     <>
-      <div onClick={onClick} style={s.card(!!active, skill.enabled)} data-skill-id={skill.id}>
+      <div onClick={onClick} style={s.card(!!active, skill.enabled && !skill.injection_detected)} data-skill-id={skill.id}>
         <div style={s.headerRow}>
           <div style={s.iconBox(tint.color, tint.bg)}>
             <Icon.Sparkles size={15} />
@@ -71,9 +71,10 @@ export function SkillCard({
           <label onClick={(e) => e.stopPropagation()} style={s.toggleLabel}>
             <span style={s.visuallyHidden}>{t("card.enable", { name: skill.name })}</span>
             <Toggle
-              on={skill.enabled}
+              on={skill.enabled && !skill.injection_detected}
               onChange={(enabled) => update.mutate({ id: skill.id, patch: { enabled } })}
               size={14}
+              disabled={skill.injection_detected}
             />
           </label>
           <button

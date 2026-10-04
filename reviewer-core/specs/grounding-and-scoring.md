@@ -149,7 +149,7 @@ Tests: `test/openrouter.test.ts:43-82`. **Untested:** the `estimateCost` fallbac
 
 ### C3 — The server's estimator is the PriceBook
 Every provider gets `PriceBook.estimatorFor(<its id>)`
-(`../server/src/platform/container.ts:269,277,282`): live OpenRouter prices cached 6 h, the
+(`../server/src/platform/container.ts:272,280,285`): live OpenRouter prices cached 6 h, the
 static table while cold, `null` when neither knows the model
 (`../server/src/platform/price-book.ts:7,64-73`, `../server/src/adapters/llm/pricing.ts:54-58`).
 The OpenAI and Anthropic APIs return tokens, never USD, so their providers price every call

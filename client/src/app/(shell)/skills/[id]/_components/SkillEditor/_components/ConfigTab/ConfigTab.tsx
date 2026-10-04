@@ -77,7 +77,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
         </Badge>
         <label style={s.enabledLabel}>
           {t("config.enabled")}
-          <Toggle on={form.enabled} onChange={edit("enabled")} size={16} />
+          <Toggle on={form.enabled && !skill.injection_detected} onChange={edit("enabled")} size={16} disabled={skill.injection_detected} />
         </label>
       </div>
       <FormField label={t("config.name")} required hint={nameHint}>

@@ -4,14 +4,26 @@ import type {
   SkillCreate,
   SkillImportPreview,
   SkillImportRequest,
+  SkillImportUrlRequest,
   SkillUpdate,
   SkillVersion,
 } from '@devdigest/shared';
 import { ConflictError, NotFoundError } from '../../platform/errors.js';
-import { applySkillPatch, createNote, restoreNote, type SkillPatch, type SkillRecord } from './domain.js';
+import {
+  applySkillPatch,
+  createNote,
+  importFilenameFromUrl,
+  importNoteUrl,
+  parseImportUrl,
+  restoreNote,
+  type SkillPatch,
+  type SkillRecord,
+} from './domain.js';
 import { toImportPreviewDto, toSkillAgentUseDto, toSkillDto, toSkillVersionDto } from './helpers.js';
 import { parseSkillUpload } from './import-parser.js';
 import type { SkillsDeps } from './ports.js';
+import { MAX_IMPORT_BYTES } from './constants.js';
+import { skillTextFlagged } from '../_shared/prompt-injection.js';
 
 /**
  * Skills Lab — reusable instruction blocks an agent's prompt includes. The DB is
@@ -59,7 +71,13 @@ export class SkillsService {
       ...(input.body !== undefined ? { body: input.body } : {}),
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     };
-    const row = await this.deps.skills.update(workspaceId, id, (current) => applySkillPatch(current, patch));
+    // Decided under the row lock: the gate checks the text the write would leave (a throw rolls back).
+    const row = await this.deps.skills.update(workspaceId, id, (current) => {
+      const blocked =
+        patch.enabled === true &&
+        skillTextFlagged({ description: patch.description ?? current.description, body: patch.body ?? current.body });
+      return applySkillPatch(current, patch, undefined, blocked);
+    });
     if (row === undefined) throw new NotFoundError('Skill not found');
     if (row === 'name_taken') throw nameTaken(input.name ?? '');
     return this.withCount(workspaceId, row);
@@ -103,6 +121,28 @@ export class SkillsService {
     });
     const taken = await this.deps.skills.nameExists(workspaceId, parsed.draft.name);
     return toImportPreviewDto(parsed, taken);
+  }
+
+  /**
+   * Fetch an https file and save it as a skill at once (no preview): fetched and
+   * parsed before any write, saved enabled with source 'imported_url'. A flagged
+   * skill is saved too; its DTO says `injection_detected: true`.
+   */
+  async importFromUrl(workspaceId: string, input: SkillImportUrlRequest): Promise<Skill> {
+    const url = parseImportUrl(input.url);
+    const file = await this.deps.fetcher.fetch(url, { maxBytes: MAX_IMPORT_BYTES });
+    const { draft } = parseSkillUpload({
+      filename: importFilenameFromUrl(file.finalUrl),
+      bytes: file.bytes,
+      preferHeadingName: true,
+    });
+    const name = input.name ?? draft.name;
+    const row = await this.deps.skills.insert(
+      { workspaceId, ...draft, name, source: 'imported_url', enabled: true },
+      createNote(importNoteUrl(url)),
+    );
+    if (row === 'name_taken') throw nameTaken(name);
+    return toSkillDto(row, 0);
   }
 
   private async load(workspaceId: string, id: string): Promise<SkillRecord> {

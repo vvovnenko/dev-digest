@@ -6,10 +6,12 @@ export function Checkbox({
   checked,
   onChange,
   label,
+  disabled,
 }: {
   checked: boolean;
   onChange?: (v: boolean) => void;
   label?: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <label
@@ -18,15 +20,18 @@ export function Checkbox({
         alignItems: "center",
         gap: 10,
         fontSize: 14,
-        color: "var(--text-secondary)",
-        cursor: "pointer",
+        color: disabled ? "var(--text-muted)" : "var(--text-secondary)",
+        cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
       <button
         type="button"
         role="checkbox"
         aria-checked={checked}
-        onClick={() => onChange?.(!checked)}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) onChange?.(!checked);
+        }}
         style={{
           width: 16,
           height: 16,
@@ -36,6 +41,7 @@ export function Checkbox({
           display: "grid",
           placeItems: "center",
           padding: 0,
+          ...(disabled ? { opacity: 0.5, cursor: "not-allowed" } : {}),
         }}
       >
         {checked && <Icon.Check size={11} style={{ color: "#fff" }} />}

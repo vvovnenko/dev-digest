@@ -116,7 +116,7 @@ export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
 
 // 'imported' = a .md / .zip uploaded through `POST /skills/import/preview` and then
-// confirmed with `POST /skills`; 'imported_url' stays reserved for URL imports.
+// confirmed with `POST /skills`; 'imported_url' = fetched and saved by `POST /skills/import/url`.
 export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community', 'imported']);
 export type SkillSource = z.infer<typeof SkillSource>;
 
@@ -146,6 +146,12 @@ export const Skill = z.object({
   evidence_files: z.array(z.string()).nullish(),
   /** Agents that have this skill linked AND enabled (list/detail responses). */
   agent_count: z.number().int().nullish(),
+  /**
+   * The description or body matches prompt-injection patterns (computed on read). Such a
+   * skill is blocked: `PUT {enabled: true}` is a 422 and review runs leave it out, so its
+   * effective state is `enabled && !injection_detected`. A clean save unblocks it.
+   */
+  injection_detected: z.boolean(),
 });
 export type Skill = z.infer<typeof Skill>;
 
@@ -253,6 +259,23 @@ export const SkillImportPreview = z.object({
   name_taken: z.boolean(),
 });
 export type SkillImportPreview = z.infer<typeof SkillImportPreview>;
+
+/**
+ * Body of `POST /skills/import/url` → 201 `Skill`. The server fetches the file (https only,
+ * public addresses, ≤ 512 KiB), parses it like an upload, checks it and saves it at once —
+ * there is no preview step. A flagged skill is saved too, with `injection_detected: true`.
+ */
+export const SkillImportUrlRequest = z.object({
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .url()
+    .refine((u) => /^https:\/\//i.test(u), { message: 'Only https:// URLs can be imported' }),
+  /** Overrides the derived name (frontmatter `name`, else the first heading, else the file name). */
+  name: SkillName.optional(),
+});
+export type SkillImportUrlRequest = z.infer<typeof SkillImportUrlRequest>;
 
 export const CommunitySkill = z.object({
   name: z.string(),

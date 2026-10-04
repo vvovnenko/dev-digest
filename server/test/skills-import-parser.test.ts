@@ -144,3 +144,36 @@ describe('parseSkillUpload — zip', () => {
     expect(() => upload('big.zip', zip)).toThrow(/larger than 256 KiB/);
   });
 });
+
+describe('parseSkillUpload — preferHeadingName (URL import)', () => {
+  const viaUrl = (filename: string, text: string) =>
+    parseSkillUpload({ filename, bytes: md(text), preferHeadingName: true });
+
+  it('names a skill without a frontmatter name after its first heading', () => {
+    const parsed = viaUrl('raw.md', 'Ignore this line.\n\n# Malicious Skill\n\n## Rule\nx');
+    expect(parsed.draft.name).toBe('malicious-skill');
+    expect(parsed.warnings).toContainEqual({ code: 'name_derived', detail: 'from "Malicious Skill"' });
+    // A folder name loses to the heading too; a heading in a code fence doesn't count.
+    expect(viaUrl('flaky/SKILL.md', '```\n# Not this\n```\n# Flaky Tests\nx').draft.name).toBe('flaky-tests');
+  });
+
+  it('a frontmatter name still wins', () => {
+    expect(viaUrl('raw.md', '---\nname: from-frontmatter\n---\n# Heading Name\nx').draft.name).toBe('from-frontmatter');
+  });
+
+  it('falls back as before when there is no usable heading', () => {
+    expect(viaUrl('flaky/SKILL.md', 'No heading here.').draft.name).toBe('flaky');
+    expect(viaUrl('edge-cases.md', '# !!!\nx').draft.name).toBe('edge-cases');
+  });
+
+  it('is off by default, so file import keeps naming by file', () => {
+    expect(upload('edge-cases.md', md('# Something Else\nx')).draft.name).toBe('edge-cases');
+    expect(parseSkillUpload({ filename: 'edge-cases.md', bytes: md('# Something Else\nx') }).draft.name).toBe('edge-cases');
+  });
+
+  it('applies to the core file of a zip too', () => {
+    const zip = zipSync({ 'pack/SKILL.md': md('# Pack Rules\nx') });
+    expect(parseSkillUpload({ filename: 'p.zip', bytes: zip, preferHeadingName: true }).draft.name).toBe('pack-rules');
+    expect(parseSkillUpload({ filename: 'p.zip', bytes: zip }).draft.name).toBe('pack');
+  });
+});

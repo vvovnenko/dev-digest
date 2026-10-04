@@ -28,6 +28,7 @@ const SKILL: Skill = {
   body: "## Rule\nCap at 5 findings.",
   enabled: true,
   version: 2,
+  injection_detected: false,
 };
 
 const version = (v: number, note: string, body: string, description = "Apply to branches."): SkillVersion => ({

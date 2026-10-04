@@ -1,6 +1,7 @@
 import type { ConventionCandidate, ConventionScan, ConventionsState, Skill } from '@devdigest/shared';
 import { clampConfidence, type ConventionRecord, type ConventionScanRecord } from './domain.js';
 import type { CreatedSkill } from './ports.js';
+import { skillTextFlagged } from '../_shared/prompt-injection.js';
 
 /** Stored records → API DTOs. Legacy rows may lack the evidence columns. */
 
@@ -63,5 +64,6 @@ export function toSkillDto(row: CreatedSkill): Skill {
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
     agent_count: 0,
+    injection_detected: skillTextFlagged(row),
   };
 }

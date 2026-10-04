@@ -87,7 +87,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 
 - `llm('openai' | 'anthropic')` builds `src/adapters/llm/openai.ts` / `anthropic.ts`.
   `llm('openrouter')` builds reviewer-core's `OpenRouterProvider`. Each gets
-  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:269,277,282`, in `buildLlm`, `:247-269`);
+  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:272,280,285`, in `buildLlm`, `:265-286`);
   OpenAI/Anthropic return tokens only, so their models are priced under the catalog alias (`src/platform/price-book.ts:17-22`).
   The container imports it from the `@devdigest/reviewer-core/llm/openrouter.js` subpath
   (`:26`): the package index does not export it, and `pnpm arch` allows that import here only.
@@ -101,12 +101,12 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 - `runBus` is one per app, so closing one app never ends another app's streams (`:115-116`).
   Tests pass their own bus through `overrides.runBus` (`test/run-lifecycle.it.test.ts:168-179`).
 - `invalidateSecretCaches()` drops the cached LLM clients, the GitHub client and the
-  embedder (`src/platform/container.ts:319-323`). Its only caller is `SettingsService.testConnection`, right
+  embedder (`src/platform/container.ts:322-326`). Its only caller is `SettingsService.testConnection`, right
   after it saves a key that passed the test (`src/modules/settings/service.ts:57-60`).
 - A service's dependencies are its module's ports: `AgentDeps`, `SkillsDeps`, `RepoDeps` (with the
   `RepoIndexing` port), `PullsDeps`, `PollingDeps`, `SettingsDeps`, `WorkspaceDeps` and
   `ReviewDeps` — store, agents (whose `enabledSkills` feeds a run's prompt), run bus, diff source,
-  repo context, LLM (`src/modules/agents/ports.ts:56`, `src/modules/skills/ports.ts:52-54`,
+  repo context, LLM (`src/modules/agents/ports.ts:56`, `src/modules/skills/ports.ts:52-55`,
   `src/modules/repos/ports.ts:40-57`,
   `src/modules/pulls/ports.ts:22`, `src/modules/polling/ports.ts:20`,
   `src/modules/settings/ports.ts:15`, `src/modules/workspace/ports.ts:13`,
@@ -140,7 +140,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   `appWith` also overrides `secrets` and `openrouter` (`test/reviews.it.test.ts:126-130`),
   because "run all enabled agents reviews with each enabled agent"
   (`test/reviews.it.test.ts:602-611`) runs the seeded OpenRouter agents
-  (`src/db/seed.ts:14`, `src/platform/container.ts:277`).
+  (`src/db/seed.ts:14`, `src/platform/container.ts:280`).
 
 ## Modules and request context
 
@@ -211,7 +211,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   check passes; a failed check keeps the old key and says `— the key was not saved`
   (`src/modules/settings/service.ts:44-62`; tests `test/settings-service.test.ts:48-72`).
 - A missing key makes the container getters throw `ConfigError`, which is a 500 `config_error`
-  (`src/platform/container.ts:245`, `:254`, `:262`, `:266`). Inside a review it fails the run instead.
+  (`src/platform/container.ts:248`, `:271`, `:279`, `:283`). Inside a review it fails the run instead.
 
 ## JobRunner (`src/platform/jobs.ts`)
 
@@ -242,7 +242,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   (`test/integration.it.test.ts:196`), which also waits for jobs queued behind their repo (`src/platform/jobs.ts:199-202`).
 - **Reviews do not use it.** They are fire-and-forget into their own queue: `container.reviewQueue`, a
   p-queue that runs `REVIEW_CONCURRENCY` review requests at once (default 2) while the rest wait
-  (`src/platform/container.ts:82`, `src/modules/reviews/service.ts:130-143`); see
+  (`src/platform/container.ts:85`, `src/modules/reviews/service.ts:130-143`); see
   [`../specs/review-flow.md`](../specs/review-flow.md).
 
 ## Writes that must stay consistent
@@ -278,11 +278,16 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   (`src/modules/agents/service.ts:129-134`; test `test/agents-versions.it.test.ts:333-349`).
 - A skill's content edit (name, description, type or body) bumps `skills.version` and writes a
   `skill_versions` snapshot with a note in one transaction that locks the skill row; toggling
-  `enabled` alone writes no version, and a restore is a new version (`src/modules/skills/domain.ts:90-108`,
+  `enabled` alone writes no version, and a restore is a new version (`src/modules/skills/domain.ts:91-114`,
   `src/modules/skills/repository.ts:57-113`). A name taken in the workspace hits the unique
   `skills_ws_name_uq` index and is a 409 `conflict` (`src/db/pg-errors.ts:8-15`). Deleting a skill
   cascades its versions and its agent links (`src/db/schema/skills.ts`, `src/db/schema/agents.ts`),
-  without bumping those agents' versions; tests `test/skills.it.test.ts`.
+  without bumping those agents' versions; tests `test/skills.it.test.ts`. The injection gate stores
+  nothing: every `Skill` DTO computes `injection_detected` from the description and body
+  (`src/modules/_shared/prompt-injection.ts`). `PUT {enabled: true}` on flagged text is a 422,
+  thrown inside the same row-lock callback so nothing is written, and a run drops a flagged skill
+  (`splitInjectedSkills`, `src/modules/reviews/helpers.ts`;
+  [`../specs/05-skill-url-import.md`](../specs/05-skill-url-import.md)).
 - Money (`cost_usd` on `agent_runs`, `eval_runs`, `ci_runs`) is `numeric` since migration
   `0013`: exact in the database, a `number` in JS (`src/db/schema/runs.ts:27`); the PR list's
   COST is summed in SQL (`src/modules/pulls/repository.ts:137-147`).
@@ -295,6 +300,11 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
 1. Interface in `src/vendor/shared/adapters.ts` (a contract change: mirror it in
    `../client/src/vendor/shared/adapters.ts`); implementation in `src/adapters/<name>/`.
    There is no `src/adapters/index.ts` barrel: the container imports the file.
+   When one module is the only user, skip the shared interface: declare the port in that
+   module's `ports.ts` and let the adapter class match it structurally, with no import
+   between them — `DiffSource` (`src/modules/reviews/ports.ts:87`) ↔ `PrDiffSource`
+   (`src/adapters/git/pr-diff.ts:12`), `SkillFileFetcher` (`src/modules/skills/ports.ts`) ↔
+   `SafeHttpsFetcher` (`src/adapters/http/safe-fetch.ts`).
 2. A private field and a lazy getter in the container. Make it async if it needs a secret,
    throw `ConfigError` when the secret is missing, and clear it in `invalidateSecretCaches()`.
 3. A `ContainerOverrides` key, checked first in the getter, and a deterministic mock in
@@ -310,6 +320,10 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
    refuses a path outside the clone with a 400 `invalid_repo_path` (`:207-214`; test
    `test/git-adapter.test.ts:100-116`); ripgrep takes the pattern after `-e` and the root
    after `--` (`src/adapters/codeindex/ripgrep.ts:61`).
+   An outbound fetch of a URL a user typed goes through `SafeHttpsFetcher`'s SSRF guard: https
+   on the default port, every resolved address checked at connect time against private and
+   loopback ranges, each redirect re-validated, a timeout and a byte cap
+   ([`../specs/05-skill-url-import.md`](../specs/05-skill-url-import.md)).
 
 ## Layers and import rules
 

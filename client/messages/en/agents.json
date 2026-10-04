@@ -109,7 +109,8 @@
     "noMatch": "No skill matches “{q}”.",
     "emptyTitle": "No skills yet",
     "emptyBody": "Create or import a skill on the Skills page, then attach it here.",
-    "emptyCta": "Go to Skills"
+    "emptyCta": "Go to Skills",
+    "injectionTitle": "Prompt-injection patterns found — edit and save the skill to unblock it"
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."

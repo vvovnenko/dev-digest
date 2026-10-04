@@ -1,4 +1,5 @@
-/* ImportSkillDrawer — import a skill from a .md file or a .zip skill folder.
+/* ImportSkillModal — import a skill from a .md file or a .zip skill folder.
+   An optional skill name comes first: typed, it is kept; blank, the file's name fills it.
    Step 1 picks a file (checked here, never sent if too big or the wrong type);
    step 2 shows the server's parsed draft — what the agent will receive, which
    archive files were left out and why, and the warnings — and saves only when
@@ -8,18 +9,17 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, Drawer, FormField, Icon, Markdown, SelectInput, TextInput } from "@devdigest/ui";
+import { Button, FormField, Icon, Markdown, Modal, SelectInput, TextInput } from "@devdigest/ui";
 import type { SkillImportPreview, SkillType } from "@devdigest/shared";
 import { useCreateSkill, usePreviewSkillImport } from "@/lib/hooks/skills";
 import { ApiError } from "@/lib/api";
 import { SKILL_TYPES, estimateTokens, isValidSkillName, renderSkillBlock } from "@/lib/skills";
 import { withoutImages } from "../../../../helpers";
-import { ACCEPTED_EXTENSIONS, DRAWER_WIDTH } from "./constants";
+import { ACCEPTED_EXTENSIONS, MODAL_WIDTH } from "./constants";
 import { checkFile, dataUrlToBase64, type FileProblem } from "./helpers";
 import { s } from "./styles";
 
 interface Draft {
-  name: string;
   description: string;
   type: SkillType;
 }
@@ -33,7 +33,7 @@ function readAsBase64(file: File): Promise<string> {
   });
 }
 
-export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
+export function ImportSkillModal({ onClose }: { onClose: () => void }) {
   const t = useTranslations("skills");
   const router = useRouter();
   const parse = usePreviewSkillImport();
@@ -42,6 +42,9 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
   const [file, setFile] = React.useState<{ name: string; problem: FileProblem | null } | null>(null);
   const [preview, setPreview] = React.useState<SkillImportPreview | null>(null);
   const [draft, setDraft] = React.useState<Draft | null>(null);
+  const [name, setName] = React.useState("");
+  // The name was filled in from the parsed file, not typed: another file may replace it.
+  const [nameFromFile, setNameFromFile] = React.useState(false);
   const [nameTaken, setNameTaken] = React.useState(false);
 
   const choose = async (picked: File | undefined) => {
@@ -57,8 +60,12 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
       {
         onSuccess: (result) => {
           setPreview(result);
-          setDraft({ name: result.draft.name, description: result.draft.description, type: result.draft.type });
-          setNameTaken(result.name_taken);
+          setDraft({ description: result.draft.description, type: result.draft.type });
+          if (!name.trim() || nameFromFile) {
+            setName(result.draft.name);
+            setNameFromFile(true);
+            setNameTaken(result.name_taken);
+          }
         },
       },
     );
@@ -69,18 +76,37 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
     setPreview(null);
     setDraft(null);
     setNameTaken(false);
+    if (nameFromFile) {
+      setName("");
+      setNameFromFile(false);
+    }
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const block = preview && draft ? renderSkillBlock({ ...draft, body: preview.draft.body }) : "";
-  const nameValid = draft ? isValidSkillName(draft.name) : false;
-  const canSave = !!preview && !!draft && nameValid && !nameTaken && !create.isPending;
+  const editName = (v: string) => {
+    setName(v);
+    setNameFromFile(false);
+    setNameTaken(false);
+  };
+
+  // Blank → the file's own name (frontmatter, folder or file stem).
+  const skillName = name.trim() || preview?.draft.name || "";
+  const nameValid = !name.trim() || isValidSkillName(name.trim());
+  const block = preview && draft ? renderSkillBlock({ ...draft, name: skillName, body: preview.draft.body }) : "";
+  const canSave = !!preview && !!draft && nameValid && isValidSkillName(skillName) && !nameTaken && !create.isPending;
+  const nameHint = nameTaken ? (
+    <span style={s.error}>{t("import.nameTaken")}</span>
+  ) : !nameValid ? (
+    <span style={s.error}>{t("create.nameInvalid")}</span>
+  ) : (
+    t("import.nameHint")
+  );
 
   // A failure is toasted by the global mutation handler; a 409 also marks the name field.
   const save = () => {
     if (!preview || !draft || !file) return;
     create.mutate(
-      { ...draft, body: preview.draft.body, source: "imported", imported_from: file.name },
+      { name: skillName, ...draft, body: preview.draft.body, source: "imported", imported_from: file.name },
       {
         onSuccess: (skill) => {
           onClose();
@@ -113,8 +139,18 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <Drawer width={DRAWER_WIDTH} title={t("import.title")} subtitle={t("import.subtitle")} onClose={onClose} footer={footer}>
+    <Modal width={MODAL_WIDTH} title={t("import.title")} subtitle={t("import.subtitle")} onClose={onClose} footer={footer}>
       <div style={s.body}>
+        <FormField label={t("import.nameLabel")} hint={nameHint}>
+          <TextInput
+            value={name}
+            onChange={editName}
+            aria-label={t("import.nameLabel")}
+            aria-invalid={nameTaken || !nameValid}
+            mono
+          />
+        </FormField>
+
         {!preview && (
           <div style={s.chooser}>
             <Icon.Upload size={22} />
@@ -148,29 +184,6 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
             </div>
 
             <div style={s.fields}>
-              <FormField
-                label={t("create.name")}
-                required
-                hint={
-                  nameTaken ? (
-                    <span style={s.error}>{t("import.nameTaken")}</span>
-                  ) : !nameValid ? (
-                    <span style={s.error}>{t("create.nameInvalid")}</span>
-                  ) : (
-                    t("create.nameHint")
-                  )
-                }
-              >
-                <TextInput
-                  value={draft.name}
-                  onChange={(v) => {
-                    edit({ name: v });
-                    setNameTaken(false);
-                  }}
-                  aria-label={t("create.name")}
-                  mono
-                />
-              </FormField>
               <FormField label={t("create.description")} hint={t("create.descriptionHint")}>
                 <TextInput
                   value={draft.description}
@@ -220,6 +233,6 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
           </>
         )}
       </div>
-    </Drawer>
+    </Modal>
   );
 }

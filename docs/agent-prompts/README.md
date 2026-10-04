@@ -52,8 +52,8 @@ delimiter-wrapped (`prompt.ts:174-194`):
 Each skill is its own block — `### <name>`, a `When to apply: <description>` line (left out
 when the description is blank), then the body (`renderSkill`, `prompt.ts:82-86`) — so write a
 skill's description as a directive ("Apply when the diff …"). Skills are instructions the user
-wrote or confirmed, so the engine does not wrap them in `<untrusted>`; see
-[`../agent-skills/README.md`](../agent-skills/README.md).
+wrote or imported, so the engine does not wrap them in `<untrusted>`, and the server keeps a
+skill that matches prompt-injection patterns out of runs; see [`../agent-skills/README.md`](../agent-skills/README.md).
 
 Sections with no content are omitted. Everything repo- or author-derived is wrapped
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions

@@ -85,9 +85,15 @@ export function restoreNote(version: number): string {
 /**
  * Decide one write. A content change bumps the version and snapshots the new
  * content (with `note`, or an "Edited …" note); toggling `enabled` alone writes
- * no version. Null when the patch changes nothing.
+ * no version. Null when the patch changes nothing. `blocked` = the resulting
+ * description + body match prompt-injection patterns: then `enabled: true` is refused.
  */
-export function applySkillPatch(current: SkillRecord, patch: SkillPatch, note?: string): SkillChange | null {
+export function applySkillPatch(current: SkillRecord, patch: SkillPatch, note?: string, blocked = false): SkillChange | null {
+  if (patch.enabled === true && blocked) {
+    throw new ValidationError('This skill contains prompt injection patterns — remove them and save before enabling it', {
+      reason: 'injection_detected',
+    });
+  }
   const changed = contentChanges(current, patch);
   const enabled = patch.enabled !== undefined && patch.enabled !== current.enabled ? patch.enabled : undefined;
   if (changed.length === 0 && enabled === undefined) return null;
@@ -386,4 +392,92 @@ export function buildImportDraft(input: {
   }
 
   return { draft: { name, description, type, body }, warnings };
+}
+
+// ---- import: URL ------------------------------------------------------------
+
+/** The longest URL `POST /skills/import/url` takes (the contract's cap too). */
+export const MAX_IMPORT_URL_CHARS = 2048;
+
+/**
+ * The URL a skill is imported from: https, no user name or password, the default
+ * port. The contract already refuses anything but https; the fetcher checks every
+ * redirect hop again and refuses private addresses.
+ */
+export function parseImportUrl(raw: string): URL {
+  const text = raw.trim();
+  if (text.length > MAX_IMPORT_URL_CHARS) {
+    throw new ValidationError(`The URL is longer than ${MAX_IMPORT_URL_CHARS} characters`, { reason: 'invalid_url' });
+  }
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new ValidationError('The URL is not valid', { reason: 'invalid_url' });
+  }
+  if (url.protocol !== 'https:') {
+    throw new ValidationError('Only https:// URLs can be imported', { reason: 'not_https' });
+  }
+  if (!url.hostname) throw new ValidationError('The URL has no host', { reason: 'invalid_url' });
+  if (url.username || url.password) {
+    throw new ValidationError('The URL must not carry a user name or password', { reason: 'credentials_in_url' });
+  }
+  // WHATWG URL drops the scheme's default port, so `:443` reads as ''.
+  if (url.port !== '') {
+    throw new ValidationError('The URL must use the default https port', { reason: 'non_default_port' });
+  }
+  return url;
+}
+
+/** Extensions the upload parser recognises; any other URL file is read as markdown. */
+const URL_FILE_EXTENSIONS = new Set(['md', 'markdown', 'zip', 'skill']);
+
+/**
+ * The file name the parser sees for a fetched URL: the last path segment,
+ * percent-decoded. `…/<dir>/SKILL.md` keeps its folder (`<dir>/SKILL.md`), so the
+ * fallback name is the folder's; a segment without a known extension gets `.md`;
+ * an empty one (a trailing slash) is `skill.md`.
+ */
+export function importFilenameFromUrl(url: URL): string {
+  const segments = url.pathname.split('/').map(decodeSegment);
+  const last = segments[segments.length - 1] ?? '';
+  if (!last) return 'skill.md';
+  const parent = segments.length > 2 ? segments[segments.length - 2] : '';
+  if (isSkillMd(last) && parent) return `${parent}/${last}`;
+  return URL_FILE_EXTENSIONS.has(extensionOf(last)) ? last : `${last}.md`;
+}
+
+/** One path segment, percent-decoded; a decoded `/` or `\` can't fake a folder. */
+function decodeSegment(segment: string): string {
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    /* malformed escapes: keep the raw text */
+  }
+  return decoded.replace(/[/\\]/g, '-');
+}
+
+/** What the v1 note records: origin + path, so a query token or fragment never reaches it. */
+export function importNoteUrl(url: URL): string {
+  return `${url.origin}${url.pathname}`;
+}
+
+/** The text of the first ATX (`#`) heading outside code fences; '' when there is none. */
+export function firstHeading(body: string): string {
+  let fence: string | null = null;
+  for (const line of body.split(/\r\n?|\n/)) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker) {
+      if (fence === null) fence = marker;
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null;
+      continue;
+    }
+    if (fence !== null) continue;
+    // Two linear steps (a single lazy regex backtracks quadratically on a long line).
+    const heading = /^ {0,3}#{1,6}(?=[ \t]|$)(.*)$/.exec(line);
+    const text = heading?.[1]!.trim().replace(/(?:^|[ \t])#+$/, '').trim();
+    if (text) return text;
+  }
+  return '';
 }

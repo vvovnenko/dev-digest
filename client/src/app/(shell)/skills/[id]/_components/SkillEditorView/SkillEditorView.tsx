@@ -9,11 +9,13 @@ import { useTranslations } from "next-intl";
 import { Badge, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { useShellCrumb } from "@/components/app-shell";
 import { SkillTypeBadge } from "@/components/skill-type-badge";
+import { InjectionBadge } from "@/components/injection-badge";
 import { useSkill, useSkills } from "@/lib/hooks/skills";
 import { ApiError } from "@/lib/api";
 import { AddSkillMenu } from "../../../_components/AddSkillMenu";
 import { SkillCard } from "../../../_components/SkillCard";
 import { SkillEditor } from "../SkillEditor";
+import { InjectionBanner } from "./_components/InjectionBanner";
 import { DEFAULT_TAB, VALID_TABS } from "./constants";
 import { s } from "./styles";
 
@@ -82,6 +84,7 @@ export function SkillEditorView() {
         </div>
       ) : (
         <div style={s.editor}>
+          {skill.injection_detected && <InjectionBanner />}
           <div style={s.editorHeader}>
             <Icon.Sparkles size={18} style={s.editorIcon} />
             <h1 className="mono" style={s.editorTitle}>
@@ -91,7 +94,7 @@ export function SkillEditorView() {
             <Badge color="var(--text-secondary)" icon="GitCommit" mono>
               {t("editor.version", { version: skill.version })}
             </Badge>
-            {!skill.enabled && <Badge color="var(--text-muted)">{t("editor.disabled")}</Badge>}
+            {skill.injection_detected ? <InjectionBadge /> : !skill.enabled && <Badge color="var(--text-muted)">{t("editor.disabled")}</Badge>}
           </div>
           <div style={s.editorBody}>
             <SkillEditor skill={skill} tab={tab} onTab={setTab} />

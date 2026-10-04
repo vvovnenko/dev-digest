@@ -9,7 +9,7 @@ import type {
   SkillAgentUse,
   SkillCreate,
   SkillImportPreview,
-  SkillImportRequest,
+  SkillImportRequest, SkillImportUrlRequest,
   SkillUpdate,
   SkillVersion,
 } from "@devdigest/shared";
@@ -112,5 +112,21 @@ export function usePreviewSkillImport() {
   return useMutation({
     mutationFn: (input: SkillImportRequest) =>
       api.post<SkillImportPreview>("/skills/import/preview", input),
+  });
+}
+
+/**
+ * Import a skill from an https URL. The server fetches, parses, checks and SAVES it at once
+ * (no preview); a skill with prompt-injection patterns is saved too, blocked
+ * (`injection_detected`). Failures (409 name taken, 422, 502) reach the global toast.
+ */
+export function useImportSkillFromUrl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SkillImportUrlRequest) => api.post<Skill>("/skills/import/url", input),
+    onSuccess: (data) => {
+      qc.setQueryData(skillKeys.detail(data.id), data);
+      void qc.invalidateQueries({ queryKey: skillKeys.all });
+    },
   });
 }

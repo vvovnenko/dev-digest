@@ -2,6 +2,7 @@ import type { Skill, SkillAgentUse, SkillImportPreview, SkillVersion } from '@de
 import type { SkillRecord, SkillVersionRecord } from './domain.js';
 import type { ParsedUpload } from './import-parser.js';
 import type { SkillUse } from './ports.js';
+import { skillTextFlagged } from '../_shared/prompt-injection.js';
 
 /** Stored records → API DTOs. */
 
@@ -17,6 +18,7 @@ export function toSkillDto(row: SkillRecord, agentCount: number): Skill {
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
     agent_count: agentCount,
+    injection_detected: skillTextFlagged(row),
   };
 }
 

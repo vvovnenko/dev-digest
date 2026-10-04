@@ -4,7 +4,7 @@ import { RunLogger } from '../../platform/run-logger.js';
 import type { FindingRecord, ReviewAgent, ReviewPull, ReviewRecord, ReviewRepoRef } from './domain.js';
 import type { ReviewDeps } from './ports.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
+import { splitInjectedSkills, taskLine } from './helpers.js';
 
 /** Thrown by a run told to stop mid-flight: a user's cancel or an API shutdown. */
 export class RunCancelledError extends Error {
@@ -165,9 +165,9 @@ export class ReviewRunExecutor {
 
       // L02 — the agent's enabled skills, in its order. A DB failure here fails
       // the run: reviewing without the agent's rules would look like a pass.
-      const skills = await runLog.step('Loading skills', () =>
-        this.deps.agents.enabledSkills(workspaceId, agent.id),
-      );
+      const loaded = await runLog.step('Loading skills', () => this.deps.agents.enabledSkills(workspaceId, agent.id));
+      const { kept: skills, blocked } = splitInjectedSkills(loaded); // a flagged skill never reaches the prompt
+      if (blocked.length > 0) runLog.info(`skills: ${blocked.length} blocked (prompt injection detected)`, { skills: blocked.map((b) => b.name) });
       const blocks = skillBlocks(skills);
       const skillTokens = blocks.reduce((sum, b) => sum + b.tokens, 0);
       runLog.info(`skills: ${blocks.length} attached (+${skillTokens} tokens)`, {

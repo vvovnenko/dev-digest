@@ -118,7 +118,10 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
   agent's links in their saved order, then the skills it never linked, by name and unchecked
   (`SkillsTab/helpers.ts:15-29`); `useSkills` → `GET /skills` and `useAgentSkills` → `GET /agents/:id/skills`.
   A row: drag handle, checkbox (enabled for this agent), mono name, type badge, "disabled globally" when the skill
-  itself is off, Open → `/skills/:id`. Header: "{linked} of {total} enabled" (`agents.json:95`) and a filter;
+  itself is off, Open → `/skills/:id`. A skill whose text matches prompt-injection patterns (`injection_detected`)
+  is blocked: red border, "Injection detected" instead of "disabled globally" (tooltip `agents.json:113`), and a
+  disabled, unchecked checkbox; it never counts as enabled and a reorder keeps its stored link flag
+  (`SkillsTab.tsx:172-194,218-232`, `SkillsTab/helpers.ts:45-69`). Header: "{linked} of {total} enabled" (`agents.json:95`) and a filter;
   reordering is off while filtering. Drag and drop, or keyboard on the handle (Space lifts, ↑/↓ move, Space
   drops, Esc cancels). Every tick, drop or keyboard drop sends the whole ordered list once —
   `useSetAgentSkills` → `POST /agents/:id/skills {links}`, optimistic, one agent's saves in order
@@ -127,27 +130,41 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
 ### `/skills`
 - `SkillsListView` (`src/app/(shell)/skills/page.tsx:12-14`, title `shell.json:52`). `useSkills` →
   `GET /skills`; a grid of `SkillCard`s: mono name (a button, "Open {name}"), type badge, source, description,
-  "{n} agents" (agents with it linked and enabled), a toggle → `PUT /skills/:id {enabled}`, delete → a confirm modal
-  (`ConfirmDeleteModal`) that names the agent count → `DELETE /skills/:id` (`SkillCard.tsx:37-43,53-64,73-77,101,104-116`). Search is local
+  "{n} agents" (agents with it linked and enabled), a toggle → `PUT /skills/:id {enabled}` (off and disabled while the
+  skill is blocked by `injection_detected`), delete → a confirm modal
+  (`ConfirmDeleteModal`) that names the agent count → `DELETE /skills/:id` (`SkillCard.tsx:37-43,53-64,73-78,102,105-117`). Search is local
   (`SkillsListView.tsx:22`). A card opens `/skills/:id?tab=preview` (`SkillsListView.tsx:62`). Breadcrumb
   "Skills Lab › Skills". States: skeletons, "Could not load skills.", "No skills yet", "No skill matches …"
   (`SkillsListView.tsx:45-58`).
-- **Add Skill ▾** (`_components/AddSkillMenu/AddSkillMenu.tsx:30-33`): "Create from scratch" opens
+- **Add Skill ▾** (`_components/AddSkillMenu/AddSkillMenu.tsx:32-36`): "Create from scratch" opens
   `CreateSkillModal` (name, description, type, body → `POST /skills` → `/skills/:id?tab=preview`,
-  `CreateSkillModal.tsx:36-48`); "Import file…" opens `ImportSkillDrawer`: a `.md` / `.markdown` / `.zip` up to
-  512 KiB, checked before any request (`ImportSkillDrawer/constants.ts:2-5`), sent as base64 to
-  `POST /skills/import/preview`, then a preview with a trust warning, editable name / description / type, the
+  `CreateSkillModal.tsx:36-48`); "Import file…" opens `ImportSkillModal` (centered, like the other two). First an
+  optional "Skill name" ("Optional — taken from the file if blank."): a typed name is kept; a blank one is filled
+  with the file's own name once it is parsed (`ImportSkillModal.tsx:144-152`). Below it, a `.md` / `.markdown` / `.zip` up to
+  512 KiB, checked before any request (`ImportSkillModal/constants.ts:2-5`), sent as base64 to
+  `POST /skills/import/preview`, then a preview with a trust warning, editable description / type, the
   warnings, the skipped files with their reasons and the rendered block (images as labels); only **Save skill**
-  writes, `POST /skills {source: 'imported', imported_from}` (`ImportSkillDrawer.tsx:47-94,140-148`). A taken
-  name (409 or `name_taken`) marks the name field and blocks Save.
+  writes, `POST /skills {source: 'imported', imported_from}` (`ImportSkillModal.tsx:50-120,178-184`). A taken
+  name (409 or `name_taken`) marks the name field and blocks Save. "Import from URL" opens
+  `ImportSkillUrlModal` ("Import skill from URL"): an optional "Skill name" first (blank → the
+  first heading), then "URL (https:// only)". **Import from URL** is enabled once the URL starts with `https://` and the name is blank or valid
+  (`ImportSkillUrlModal/helpers.ts:9-18`); it sends `POST /skills/import/url {url, name?}` — no preview, the server
+  fetches, checks and saves — then opens `/skills/:id?tab=config` if the skill is flagged, else `?tab=preview`
+  (`helpers.ts:27-29`); a 409 marks the name field; other failures are toasted and the modal stays open
+  (`ImportSkillUrlModal.tsx:25-50`). Spec: `specs/05-skill-url-import.md`.
 
 ### `/skills/:id`
 - `SkillEditorView` (`src/app/(shell)/skills/[id]/page.tsx:12-14`, title `shell.json:53`): skill cards on the
   left (`useSkills`) with Add Skill ▾, the editor for `useSkill` → `GET /skills/:id`; header: mono name, type
-  badge, `vN`, "disabled" (`SkillEditorView.tsx:84-95`). `?tab=config|preview|versions`, default
-  `preview`, through `router.replace` (`SkillEditorView/constants.ts:2-4`, `SkillEditorView.tsx:29-35`).
-  Failed load or missing skill → full-screen "Could not load this skill" (`:43-52`).
-- **Config** stays mounted while another tab shows (`SkillEditor/SkillEditor.tsx:25-27`): enabled, name,
+  badge, `vN`, "disabled" (`SkillEditorView.tsx:87-97`). A blocked skill (`injection_detected`) shows "Injection
+  detected" instead of "disabled", and above the header a full-width alert "INJECTION DETECTED — DO NOT ENABLE" ·
+  "This skill contains prompt injection patterns. It has been automatically blocked."
+  (`SkillEditorView/_components/InjectionBanner/InjectionBanner.tsx:8-19`, `skills.json:259-263`); a clean save
+  removes both. `?tab=config|preview|versions`, default
+  `preview`, through `router.replace` (`SkillEditorView/constants.ts:2-4`, `SkillEditorView.tsx:31-37`).
+  Failed load or missing skill → full-screen "Could not load this skill" (`:45-54`).
+- **Config** stays mounted while another tab shows (`SkillEditor/SkillEditor.tsx:25-27`): enabled (off and disabled
+  while blocked, `ConfigTab/ConfigTab.tsx:80`), name,
   description with a directive hint (the "When to apply" line), type, and the body in a line-numbered editor
   headed `<name>.md`, "unsaved" and "{n} tokens" — `ceil(chars / 4)` of the rendered block
   (`ConfigTab/ConfigTab.tsx:33-39,100-109`). Save sends only the fields that differ, `PUT /skills/:id`; Cancel
@@ -258,7 +275,7 @@ No `data-testid`s: flows match visible text and URLs. "Seed" = `../server/src/db
 | `05-pr-diff` | button "Files changed"; `tab=diff`; "src/config.ts" | `PrDetailHeader.tsx:95`, `prReview.json:178`; seed `:134` via `DiffViewer` |
 | `06-onboarding` | "Add a repository"; "Repository URL" | `AddRepoView.tsx:58,76` → `messages/en/shell.json:80,82` |
 | `07-settings` | URLs `/settings/api-keys`, `/settings/models`; "API Keys"; "Feature Models" | `nav.ts:47-48` (sub-nav, crumb) and `messages/en/settings.json:6,24` (section titles) |
-| `08-skills-lab` | URL `/skills`; "branch-coverage"; button "Open branch-coverage"; `tab=preview`; "Rendered as the reviewing agent receives it."; "When to apply:"; button "Open Test Quality Reviewer"; `tab=config`; button "Skills" (exact); `tab=skills`; "3 of 3 enabled" | Seeded skill `../server/src/db/seed-skills.ts:21`; the card's name button `SkillCard.tsx:53-64` with `skills.json:109`; `SkillsListView.tsx:62`; `skills.json:209`; `src/lib/skills.ts:28`; `AgentCard.tsx:43` with `agents.json:7` (agent seed `:273-284`); the Skills tab `agents.json:51` (the sidebar "Skills" is a link, so `--exact` button finds the tab); `agents.json:95`, three skills linked by seed `:339-354` |
+| `08-skills-lab` | URL `/skills`; "branch-coverage"; button "Open branch-coverage"; `tab=preview`; "Rendered as the reviewing agent receives it."; "When to apply:"; button "Open Test Quality Reviewer"; `tab=config`; button "Skills" (exact); `tab=skills`; "3 of 3 enabled" | Seeded skill `../server/src/db/seed-skills.ts:21`; the card's name button `SkillCard.tsx:53-64` with `skills.json:109`; `SkillsListView.tsx:62`; `skills.json:211`; `src/lib/skills.ts:28`; `AgentCard.tsx:43` with `agents.json:7` (agent seed `:273-284`); the Skills tab `agents.json:51` (the sidebar "Skills" is a link, so `--exact` button finds the tab); `agents.json:95`, three skills linked by seed `:339-354` |
 
 ## When you change this
 

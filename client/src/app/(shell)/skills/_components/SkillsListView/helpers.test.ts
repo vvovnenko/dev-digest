@@ -11,6 +11,7 @@ const skill = (name: string, description: string, type: Skill["type"] = "custom"
   body: "b",
   enabled: true,
   version: 1,
+  injection_detected: false,
 });
 
 describe("filterSkills", () => {

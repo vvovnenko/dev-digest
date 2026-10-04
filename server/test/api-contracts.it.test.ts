@@ -28,7 +28,7 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockGitHubClient, MockSecretsProvider } from '../src/adapters/mocks.js';
+import { MockGitHubClient, MockSecretsProvider, MockUrlFetcher } from '../src/adapters/mocks.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -43,7 +43,7 @@ d('API responses match the shared contracts (Testcontainers pg)', () => {
     app = await buildApp({
       config: loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv),
       db: pg.handle.db,
-      overrides: { github: new MockGitHubClient(), secrets: new MockSecretsProvider() },
+      overrides: { github: new MockGitHubClient(), secrets: new MockSecretsProvider(), urlFetcher: contractUrls() },
     });
   });
   afterAll(async () => {
@@ -110,6 +110,16 @@ d('API responses match the shared contracts (Testcontainers pg)', () => {
     await read(`/agents/${agents[0]!.id}/skills`, z.array(AgentSkillLink));
   });
 
+  it('a skill imported from a URL', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/skills/import/url',
+      payload: { url: 'https://raw.example/contract/SKILL.md' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(Skill.parse(res.json())).toMatchObject({ name: 'contract-url', source: 'imported_url' });
+  });
+
   it("a repo's conventions (no scan yet)", async () => {
     const [repo] = await read('/repos', z.array(Repo));
     expect(await read(`/repos/${repo!.id}/conventions`, ConventionsState)).toEqual({
@@ -119,3 +129,8 @@ d('API responses match the shared contracts (Testcontainers pg)', () => {
     });
   });
 });
+
+/** The one URL the import route may fetch here (no network). */
+function contractUrls() {
+  return new MockUrlFetcher({ 'https://raw.example/contract/SKILL.md': { body: '# Contract URL\nRule.' } });
+}
