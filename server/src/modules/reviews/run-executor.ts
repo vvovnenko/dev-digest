@@ -1,5 +1,5 @@
-import type { LLMUsage, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers, usageOf } from '@devdigest/reviewer-core';
+import type { LLMUsage, PromptSkillBlock, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import { reviewPullRequest, countBlockers, skillBlocks, usageOf } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import type { FindingRecord, ReviewAgent, ReviewPull, ReviewRecord, ReviewRepoRef } from './domain.js';
 import type { ReviewDeps } from './ports.js';
@@ -16,6 +16,9 @@ export class RunCancelledError extends Error {
 
 /** What a run stopped by an API shutdown records as its error. */
 export const RUN_SHUTDOWN_ERROR = 'The API shut down while this run was in progress';
+
+/** The skills block a run's prompt carried, kept for its trace (a failed run's too). */
+type SkillTrace = { text: string; blocks: PromptSkillBlock[] };
 
 /** Minimal structured logger (pino-compatible: (obj, msg)) for runtime logs. */
 export type Logger = {
@@ -146,6 +149,8 @@ export class ReviewRunExecutor {
     const signal = this.deps.runs.track(runId);
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
+    // Set once the skills are loaded, so a run that fails later still traces them.
+    let skillTrace: SkillTrace | undefined;
 
     try {
       // Cancelled while waiting its turn, or the API is shutting down.
@@ -157,6 +162,18 @@ export class ReviewRunExecutor {
         () => this.deps.llm(agent.provider as Provider),
         { kind: 'tool' },
       );
+
+      // L02 — the agent's enabled skills, in its order. A DB failure here fails
+      // the run: reviewing without the agent's rules would look like a pass.
+      const skills = await runLog.step('Loading skills', () =>
+        this.deps.agents.enabledSkills(workspaceId, agent.id),
+      );
+      const blocks = skillBlocks(skills);
+      const skillTokens = blocks.reduce((sum, b) => sum + b.tokens, 0);
+      runLog.info(`skills: ${blocks.length} attached (+${skillTokens} tokens)`, {
+        skills: blocks.map((b) => ({ name: b.name, version: b.version, tokens: b.tokens })),
+      });
+      if (blocks.length > 0) skillTrace = { text: blocks.map((b) => b.text).join('\n\n'), blocks };
 
       // Per-agent repo-intel toggle (Agent editor). When an agent opts out we
       // skip all enrichment entirely so its prompt is identical to the
@@ -199,6 +216,8 @@ export class ReviewRunExecutor {
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // L02 — the agent's skills (trusted instructions); omitted when none is enabled.
+        ...(skills.length > 0 ? { skills } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -313,7 +332,7 @@ export class ReviewRunExecutor {
             tokensOut: spent?.tokensOut ?? 0,
             costUsd: spent?.costUsd ?? null,
           },
-          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, spent),
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, spent, skillTrace),
         )
         .catch((writeErr) => runLog.error(`Could not record the ${status} run: ${(writeErr as Error).message}`));
       this.deps.runs.complete(runId);
@@ -421,6 +440,7 @@ export class ReviewRunExecutor {
     grounding: string,
     durationMs = 0,
     spent?: LLMUsage | null,
+    skills?: SkillTrace,
   ): RunTrace {
     return {
       config: {
@@ -439,7 +459,14 @@ export class ReviewRunExecutor {
         findings: 0,
         grounding,
       },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: skills?.text ?? null,
+        skill_blocks: skills?.blocks ?? null,
+        memory: null,
+        specs: null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],

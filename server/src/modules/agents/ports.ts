@@ -1,5 +1,5 @@
 import type { CiFailOn, LLMProvider, Provider, ReviewStrategy } from '@devdigest/shared';
-import type { AgentRecord, AgentVersionRecord } from './domain.js';
+import type { AgentRecord, AgentVersionRecord, SkillLink } from './domain.js';
 
 export interface NewAgent {
   workspaceId: string;
@@ -39,12 +39,18 @@ export interface AgentStore {
   update(workspaceId: string, id: string, patch: AgentPatch): Promise<AgentRecord | undefined>;
   listVersions(agentId: string): Promise<AgentVersionRecord[]>;
   getVersion(agentId: string, version: number): Promise<AgentVersionRecord | undefined>;
-  /** The agent's skill ids with their order, ascending. */
-  skillLinks(agentId: string): Promise<{ skillId: string; order: number }[]>;
+  /** The agent's skill links with their order (ascending) and per-agent flag. */
+  skillLinks(agentId: string): Promise<{ skillId: string; order: number; enabled: boolean }[]>;
+  /** Agent id → enabled skill links (missing = 0); every agent when `agentIds` is omitted. */
+  skillCounts(workspaceId: string, agentIds?: string[]): Promise<Map<string, number>>;
   /** Which of `skillIds` exist in the workspace. */
   skillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<string[]>;
-  /** Replace the linked skills with `change(current)`; false when the agent isn't in the workspace. */
-  replaceSkills(workspaceId: string, agentId: string, change: (current: string[]) => string[]): Promise<boolean>;
+  /** Replace the skill links with `change(current)`; false when the agent isn't in the workspace. */
+  replaceSkills(
+    workspaceId: string,
+    agentId: string,
+    change: (current: SkillLink[]) => SkillLink[],
+  ): Promise<boolean>;
 }
 
 export interface AgentDeps {

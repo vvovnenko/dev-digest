@@ -9,6 +9,8 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md) — added in L02; its specific
+  checklists live in skills ([`../agent-skills/`](../agent-skills/README.md))
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
@@ -27,25 +29,31 @@ receives exactly two messages:
 <INJECTION_GUARD>   // appended verbatim to EVERY agent, every run
 ```
 
-`INJECTION_GUARD` (`prompt.ts:16`) tells the model that everything inside
+`INJECTION_GUARD` (`prompt.ts:18`) tells the model that everything inside
 `<untrusted>…</untrusted>` is data, never instructions, and that claims like "test
 fixture / not for production / ignore this" never descope the review. You do not
 need to repeat any of this in your prompt — it is always there.
 
 **User message** = the task and all context, in this order, each untrusted block
-delimiter-wrapped (`prompt.ts:118-140`):
+delimiter-wrapped (`prompt.ts:174-194`):
 
 ```
 <task line, e.g. "Review pull request #7 (…)" — trusted, so it names only the number>
 ## Pull request          (untrusted: the PR title and author)
 ## PR description        (untrusted, author-controlled, truncated to 4000 chars)
-## Skills / rules        (linked skill bodies)
+## Skills / rules        (the agent's enabled skills, in its order — trusted, not wrapped)
 ## Relevant memory       (curated memory items)
 ## Repo skeleton         (untrusted, repo-derived)
 ## Project context       (untrusted spec chunks)
 ## Callers of changed symbols  (untrusted, repo-derived)
 ## Diff to review        (untrusted)
 ```
+
+Each skill is its own block — `### <name>`, a `When to apply: <description>` line (left out
+when the description is blank), then the body (`renderSkill`, `prompt.ts:82-86`) — so write a
+skill's description as a directive ("Apply when the diff …"). Skills are instructions the user
+wrote or confirmed, so the engine does not wrap them in `<untrusted>`; see
+[`../agent-skills/README.md`](../agent-skills/README.md).
 
 Sections with no content are omitted. Everything repo- or author-derived is wrapped
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions

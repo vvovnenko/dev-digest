@@ -7,6 +7,7 @@ import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { PullsRepository } from '../src/modules/pulls/repository.js';
+import { diffFromPatches } from '../src/adapters/git/pr-diff.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -71,6 +72,96 @@ d('Testcontainers: pg + pgvector', () => {
     await seed(pg.handle.db);
     const ws = await pg.handle.db.select().from(t.workspaces);
     expect(ws.filter((w) => w.name === 'default')).toHaveLength(1);
+  });
+
+  it('seeds the Test Quality Reviewer, its three linked skills (v1) and PR #483 — once', async () => {
+    const { db } = pg.handle;
+    const { workspaceId } = await seed(db);
+    await seed(db);
+
+    const agents = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Test Quality Reviewer')));
+    expect(agents).toHaveLength(1);
+
+    const skills = await db.select().from(t.skills).where(eq(t.skills.workspaceId, workspaceId));
+    expect(skills.map((s) => s.name).sort()).toEqual([
+      'branch-coverage',
+      'edge-case-checklist',
+      'mocking-discipline',
+    ]);
+    expect(skills.every((s) => s.version === 1 && s.source === 'manual' && s.enabled)).toBe(true);
+
+    for (const skill of skills) {
+      const versions = await db
+        .select()
+        .from(t.skillVersions)
+        .where(eq(t.skillVersions.skillId, skill.id));
+      expect(versions).toHaveLength(1);
+      expect(versions[0]).toMatchObject({
+        version: 1,
+        name: skill.name,
+        description: skill.description,
+        type: skill.type,
+        body: skill.body,
+        note: 'Created',
+      });
+    }
+
+    const links = await db
+      .select()
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agents[0]!.id))
+      .orderBy(t.agentSkills.order);
+    expect(links.map((l) => skills.find((s) => s.id === l.skillId)?.name)).toEqual([
+      'branch-coverage',
+      'edge-case-checklist',
+      'mocking-discipline',
+    ]);
+    expect(links.every((l) => l.enabled)).toBe(true);
+
+    const prs = await db
+      .select()
+      .from(t.pullRequests)
+      .where(and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.number, 483)));
+    expect(prs).toHaveLength(1);
+    expect(prs[0]).toMatchObject({ title: 'Add partial refunds', status: 'needs_review', filesCount: 2 });
+    const files = await db.select().from(t.prFiles).where(eq(t.prFiles.prId, prs[0]!.id));
+    expect(files.map((f) => f.path).sort()).toEqual(['src/refunds.ts', 'test/refunds.test.ts']);
+    expect(prs[0]!.additions).toBe(files.reduce((sum, f) => sum + f.additions, 0));
+    const reviews = await db.select().from(t.reviews).where(eq(t.reviews.prId, prs[0]!.id));
+    expect(reviews).toHaveLength(0);
+
+    // No clone: the review diff is rebuilt from the stored patches, every line added.
+    const diff = diffFromPatches(files);
+    for (const f of files) {
+      const parsed = diff.files.find((d) => d.path === f.path);
+      expect(parsed?.hunks[0]?.newStart).toBe(1);
+      expect(parsed?.hunks[0]?.newLines).toBe(f.additions);
+    }
+  });
+
+  it('a reseed never relinks a skill the user unlinked', async () => {
+    const { db } = pg.handle;
+    const { workspaceId } = await seed(db);
+    const [agent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Test Quality Reviewer')));
+    const [skill] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, 'branch-coverage')));
+    await db
+      .delete(t.agentSkills)
+      .where(and(eq(t.agentSkills.agentId, agent!.id), eq(t.agentSkills.skillId, skill!.id)));
+
+    await seed(db);
+
+    const links = await db.select().from(t.agentSkills).where(eq(t.agentSkills.agentId, agent!.id));
+    expect(links).toHaveLength(2);
+    expect(links.some((l) => l.skillId === skill!.id)).toBe(false);
   });
 });
 

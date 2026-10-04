@@ -1,0 +1,23 @@
+{
+  "name": "Skills Lab lists the seeded skills, previews one, and shows the Test Quality Reviewer's attached skills",
+  "description": "Read-only. Loads /skills, opens the seeded branch-coverage skill (its card's name button, aria-label 'Open branch-coverage'), lands on the Preview tab and sees the block exactly as the agent receives it ('When to apply:' line). Then opens the seeded Test Quality Reviewer from /agents, switches to its Skills tab and sees all three seeded skills enabled. Sorts before 09, the one flow that writes.",
+  "steps": [
+    { "cmd": ["set", "viewport", "1280", "1600"], "label": "tall viewport: agent-browser clicks by coordinates and does not scroll the shell's inner pane" },
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the Skills page" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
+    { "cmd": ["wait", "--text", "branch-coverage"], "label": "a seeded skill card is visible" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Open branch-coverage"], "label": "open the branch-coverage skill" },
+    { "cmd": ["wait", "--url", "tab=preview"], "label": "the editor opens on the Preview tab" },
+    { "cmd": ["wait", "--text", "Rendered as the reviewing agent receives it."], "label": "the preview caption shows" },
+    { "cmd": ["wait", "--text", "When to apply:"], "label": "the rendered block carries the description as its When to apply line" },
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
+    { "cmd": ["wait", "--url", "/agents"], "label": "agents route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Open Test Quality Reviewer"], "label": "open the seeded Test Quality Reviewer" },
+    { "cmd": ["wait", "--url", "tab=config"], "label": "the agent editor opens on Config" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Skills", "--exact"], "label": "switch to the Skills tab (the sidebar Skills is a link, not a button)" },
+    { "cmd": ["wait", "--url", "tab=skills"], "label": "skills tab is active in the URL" },
+    { "cmd": ["wait", "--text", "3 of 3 enabled"], "label": "all three seeded skills are attached and enabled" }
+  ]
+}

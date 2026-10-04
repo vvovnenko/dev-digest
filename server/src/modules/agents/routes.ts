@@ -1,7 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Agent, AgentCreate, AgentUpdate, AgentVersion, Provider } from '@devdigest/shared';
+import {
+  Agent,
+  AgentCreate,
+  AgentSkillLink,
+  AgentSkillsUpdate,
+  AgentUpdate,
+  AgentVersion,
+  Provider,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -24,22 +32,11 @@ const VersionParams = z.object({
  *   PUT    /agents/:id              → update / toggle enabled (versions config)
  *   GET    /agents/:id/versions     → config history (newest first)
  *   GET    /agents/:id/versions/:version → one config snapshot
- *   GET    /agents/:id/skills       → linked skills (ordered)
- *   POST   /agents/:id/skills       → set/reorder linked skills OR link one
+ *   GET    /agents/:id/skills       → skill links (ordered, with the per-agent flag)
+ *   POST   /agents/:id/skills       → replace the links ({links}) / set by id ({skill_ids}) / link one ({skill_id})
  *   GET    /agents/:id/models       → dynamic model list for the agent's provider
  *   GET    /providers/:id/models    → dynamic model list for a provider (editor)
  */
-
-/** Either set the whole ordered set (`skill_ids`) or link one (`skill_id`). */
-const SetSkillsBody = z
-  .object({
-    skill_ids: z.array(z.string().uuid()).optional(),
-    skill_id: z.string().uuid().optional(),
-    order: z.number().int().optional(),
-  })
-  .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
-    message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
-  });
 
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -119,23 +116,29 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     },
   );
 
-  app.get('/agents/:id/skills', { schema: { params: IdParams } }, async (req) => {
-    const { workspaceId } = await getContext(app.container, req);
-    const agent = await service.get(workspaceId, req.params.id);
-    if (!agent) throw new NotFoundError('Agent not found');
-    return service.skillLinks(req.params.id);
-  });
+  app.get(
+    '/agents/:id/skills',
+    { schema: { params: IdParams, response: { 200: z.array(AgentSkillLink) } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const agent = await service.get(workspaceId, req.params.id);
+      if (!agent) throw new NotFoundError('Agent not found');
+      return service.skillLinks(req.params.id);
+    },
+  );
 
   app.post(
     '/agents/:id/skills',
-    { schema: { params: IdParams, body: SetSkillsBody } },
+    { schema: { params: IdParams, body: AgentSkillsUpdate, response: { 200: z.array(AgentSkillLink) } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       const body = req.body;
       const links =
-        body.skill_ids !== undefined
-          ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+        body.links !== undefined
+          ? await service.setSkillLinks(workspaceId, req.params.id, body.links)
+          : body.skill_ids !== undefined
+            ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
+            : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },

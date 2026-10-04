@@ -38,6 +38,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-28** — A job attempt that times out is never retried: `withRetry` decides by `status`/`code` only and `TimeoutError` has neither, so the job fails at once — while its handler keeps running, since `withTimeout` only stops waiting. The JobRunner therefore holds the repo until every handler call settles (bounded by `timeoutMs`). Evidence: `src/platform/resilience.ts:6,35-43`, `src/platform/jobs.ts:50,181`
 - **2026-09-28** — Ports return domain record interfaces that the Drizzle rows satisfy structurally, so a repository `implements` its port and returns its rows unmapped; a port stricter than the object wired into it fails only at the composition point (`RepoContext.getRepoMap` needed `degraded?: boolean`, as the repo-intel facade has, before `repoContext: container.repoIntel` compiled). Evidence: `src/modules/reviews/repository.ts:29`, `src/modules/reviews/ports.ts:90`, `src/modules/reviews/routes.ts:28`
 - **2026-09-28** — A review needs diff text: with no clone, `git diff` throws and `PrDiffSource` falls back to the stored `pr_files.patch` rows. The seed stored none, so reviewing the demo PR on a fresh DB failed with "The diff has no reviewable text" before any model call; the seed now gives `src/config.ts` a 4-line patch (e2e flow 08 depends on it). Evidence: `src/adapters/git/pr-diff.ts:22-29`, `src/db/seed.ts:123,231`.
+- **2026-10-03** — `onion-domain-pure` lets `modules/<m>/domain.ts` import only its own `domain.ts`, the kernel and zod — not the module's own `constants.ts` → constants a domain rule needs (the skills import extension lists) live in `domain.ts` or are passed in. Evidence: `.dependency-cruiser.cjs:67-68`, `src/modules/skills/domain.ts:138`
+- **2026-10-03** — The fake LLM anchors its finding on the first `+++ b/` header in *all* messages joined, and skills sit in the user message before the diff → a skill body or agent prompt containing a `+++ b/` line moves the fake finding (e2e flow 09 then grounds on the wrong file); keep diff headers out of skills and prompts — `seed-docs-sync.test.ts` checks the seeded ones. Evidence: `src/adapters/llm/fake.ts:26,50`, `test/seed-docs-sync.test.ts:52`
 
 ## Tool & library notes
 
@@ -58,6 +60,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-29** — `drizzle-orm` 0.45 lists `gel` as an optional peer, and `auto-install-peers=true` installs it anyway, which brought a high `shell-quote` advisory into `pnpm audit --prod`; `pnpm update shell-quote` (within gel's range) cleared it. Evidence: `.npmrc:2`, `pnpm-lock.yaml:2089`.
 - **2026-09-29** — A Vitest `globalSetup` runs in the main process: importing any module that imports `inject` from `vitest` there fails with "Vitest failed to access its internal state" and the project runs no tests → keep what the setup shares in a vitest-free module. Evidence: `test/helpers/pg-shared.ts:1-5`, `test/helpers/pg-global-setup.ts:5`.
 - **2026-09-29** — `SimpleGitClient` sets `GIT_ALLOW_PROTOCOL` on the global `process.env` when it is constructed, so every later `git` child of the same process — a test's fixture `git clone file://…` included — is limited to https/ssh and fails → pass an explicit `env` to fixture git commands. Evidence: `src/adapters/git/simple-git.ts:46`, `test/git-adapter.test.ts:125`.
+- **2026-10-03** — fflate's `unzipSync` with a `filter` that returns `false` walks only the central directory and inflates nothing, and when it does inflate an entry it writes into a buffer of the entry's *declared* `originalSize` (`inflateSync(…, { out: new u8(su) })`), so a header that understates the size truncates instead of growing memory → read an untrusted zip in two passes: list names + declared sizes and enforce the caps, then inflate only the one entry you need. Evidence: `node_modules/fflate/lib/index.cjs:2691`, `src/modules/skills/import-parser.ts:71,103`
+- **2026-10-03** — yaml 2's `parse` throws the first document error unless `logLevel` is `'silent'`, which silently drops errors instead → pass `logLevel: 'error'` (keeps the throw, stops warnings going to stderr) and `maxAliasCount` to cap alias bombs on untrusted frontmatter. Evidence: `node_modules/yaml/dist/public-api.js:71-77`, `src/modules/skills/import-parser.ts:137`
 
 ## Recurring errors & fixes
 
@@ -112,6 +116,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-29** — Wave 6 (fastify + drizzle 0.45 bumps, numeric money, exactOptionalPropertyTypes, dead code + no-orphans/no-unreachable, shared test Postgres, default branch, read-only PR list + poll import, review queue, response schemas, paging, trace retention, loopback Postgres): +4 (Tool & library notes)
 - **2026-09-29** — Incremental PR poll (watermark, migration 0014) + batched diff stats (GraphQL, REST fallback): +1 (Recurring errors & fixes)
 - **2026-10-01** — PR Self Review skill plan (no code): +1 (Tool & library notes, nuance)
+- **2026-10-03** — L02 Skills Lab (skills module, import, agent Skills tab, trace blocks, Test Quality Reviewer): +4 (Tool & library notes ×2, Codebase patterns ×2)
 
 ## Open questions
 

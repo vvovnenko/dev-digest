@@ -26,12 +26,12 @@ has the conventions. The review run is specified in
    - **Reaper**, awaited before any plugin: every `agent_runs` row still `running`
      becomes `failed` with the error `The API restarted while this run was in progress`
      and no duration, and every `jobs` row still `queued` or `running` becomes `failed`
-     (`:106-124`, `src/modules/reviews/repository/run.repo.ts:118-125`,
+     (`:106-124`, `src/modules/reviews/repository/run.repo.ts:119-126`,
      `src/platform/jobs.ts:227-234`). If it throws, boot only logs a warning. It assumes
      one API instance per DB (`src/app.ts:114-115`).
    - **Trace retention**, `TRACE_RETENTION_DAYS` (default 90, `0` turns it off): the traces of finished runs
      that started before the cutoff are deleted at boot and then daily; the run rows stay
-     (`src/app.ts:126-144`, `src/modules/reviews/repository/run.repo.ts:131-141`).
+     (`src/app.ts:126-144`, `src/modules/reviews/repository/run.repo.ts:132-142`).
    - A `preClose` hook for shutdown (`src/app.ts:146-149`): `runBus.shutdown()` aborts every live
      run and ends every open event stream, which `close()` would otherwise wait on
      forever; then it waits up to `SHUTDOWN_GRACE_MS` (10 s, `:41`) for the runs to
@@ -48,7 +48,7 @@ has the conventions. The review run is specified in
      `reason: 'db_unreachable'` when the DB ping fails, and a 503 with
      `reason: 'migrations_pending'` and the count when the DB has applied fewer migrations
      than this build ships in its drizzle journal (`src/db/migration-status.ts:9-23`;
-     test `test/integration.it.test.ts:266-284`). Then the error handler (`src/app.ts:207-253`),
+     test `test/integration.it.test.ts:357-375`). Then the error handler (`src/app.ts:207-253`),
      a not-found handler with the same envelope (`:255-258`), the modules (`:262-264`), and
      an `onClose` that closes the pool only if `buildApp` created it (`:267`).
 
@@ -57,7 +57,7 @@ The reaper runs on **every** `buildApp`, tests included. The server's vitest con
 `db` (`test/routes-smoke.test.ts:15`) never reaches the dev DB — its reaper only logs a
 warning. A second app built while a run of the first is in flight marks that run
 `failed`; the first app's final write only lands on a `running` row, so the run stays
-`failed` and saves no review (`src/modules/reviews/repository/run.repo.ts:223-228`). A
+`failed` and saves no review (`src/modules/reviews/repository/run.repo.ts:211-216`). A
 job row has no such guard: the first app's JobRunner writes its final status over the reap.
 
 ## The container (`src/platform/container.ts`)
@@ -75,7 +75,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 | `runBus` | eager: `new RunBus()`, one per app (`:103-104`) | `runBus` |
 | `jobs` | eager: `new JobRunner(db)` (`:105`) | — |
 | `git`, `codeIndex` | lazy getters (`:108-112`, `:158-162`) | `git`, `codeIndex` |
-| `agentsRepo`, `reviewRepo`, `pullsRepo`, `settingsRepo`, `workspaceRepo`, `reposRepo` | lazy getters (`:114-132`, `:142-144`) | — |
+| `agentsRepo`, `skillsRepo`, `reviewRepo`, `pullsRepo`, `settingsRepo`, `workspaceRepo`, `reposRepo` | lazy getters (`:114-132`, `:142-144`; `skillsRepo` `:131-133`) | — |
 | `prDiffs` | lazy: `PrDiffSource` over `git` and the stored `pr_files` patches (`:134-140`) | through `git` |
 | `repoIndexing` | a fresh object per access whose `index`/`refresh` enqueue repo-intel's `INDEX_JOB_KIND`/`REFRESH_JOB_KIND`, so the repos module never names them (`:146-156`) | — |
 | `repoIntel`, `depgraph`, `tokenizer` | lazy getters (`:164-187`) | same names |
@@ -87,28 +87,29 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 
 - `llm('openai' | 'anthropic')` builds `src/adapters/llm/openai.ts` / `anthropic.ts`.
   `llm('openrouter')` builds reviewer-core's `OpenRouterProvider` with
-  `priceBook.estimate` injected as its cost fallback (`src/platform/container.ts:249-258`, in `buildLlm`, `:239-263`).
+  `priceBook.estimate` injected as its cost fallback (`src/platform/container.ts:255-264`, in `buildLlm`, `:245-269`).
   The container imports it from the `@devdigest/reviewer-core/llm/openrouter.js` subpath
   (`:26`): the package index does not export it, and `pnpm arch` allows that import here only.
 - With `DEVDIGEST_FAKE_LLM=1` (`config.fakeLlm`) every agent gets `FakeReviewLlm` instead
-  (`:234`, `src/adapters/llm/fake.ts:45`): one WARNING on the diff's first added line, no key,
+  (`:240`, `src/adapters/llm/fake.ts:45`): one WARNING on the diff's first added line, no key,
   no network. It is for the e2e review flow; `loadConfig` refuses it under
   `NODE_ENV=production` (`src/platform/config.ts:89-91`).
-- The overridable set is `ContainerOverrides` (`:51-67`). You cannot override
+- The overridable set is `ContainerOverrides` (`:52-68`). You cannot override
   `priceBook`, the repositories, `prDiffs`, `repoIndexing` or `jobs`. Getters check the override
-  before the cache, so an override always wins (`:120`, `:220`, `:230-231`, `:285`).
-- `runBus` is one per app, so closing one app never ends another app's streams (`:113-114`).
+  before the cache, so an override always wins (`:122`, `:226`, `:236-237`, `:291`).
+- `runBus` is one per app, so closing one app never ends another app's streams (`:115-116`).
   Tests pass their own bus through `overrides.runBus` (`test/run-lifecycle.it.test.ts:168-179`).
 - `invalidateSecretCaches()` drops the cached LLM clients, the GitHub client and the
-  embedder (`src/platform/container.ts:299-303`). Its only caller is `SettingsService.testConnection`, right
+  embedder (`src/platform/container.ts:305-309`). Its only caller is `SettingsService.testConnection`, right
   after it saves a key that passed the test (`src/modules/settings/service.ts:57-60`).
-- A service's dependencies are its module's ports: `AgentDeps`, `RepoDeps` (with the
+- A service's dependencies are its module's ports: `AgentDeps`, `SkillsDeps`, `RepoDeps` (with the
   `RepoIndexing` port), `PullsDeps`, `PollingDeps`, `SettingsDeps`, `WorkspaceDeps` and
-  `ReviewDeps` — store, agents, run bus, diff source, repo context, LLM
-  (`src/modules/agents/ports.ts:50`, `src/modules/repos/ports.ts:40-57`,
+  `ReviewDeps` — store, agents (whose `enabledSkills` feeds a run's prompt), run bus, diff source,
+  repo context, LLM (`src/modules/agents/ports.ts:56`, `src/modules/skills/ports.ts:50-52`,
+  `src/modules/repos/ports.ts:40-57`,
   `src/modules/pulls/ports.ts:22`, `src/modules/polling/ports.ts:20`,
   `src/modules/settings/ports.ts:15`, `src/modules/workspace/ports.ts:13`,
-  `src/modules/reviews/ports.ts:110`). The container's repositories and adapters satisfy
+  `src/modules/reviews/ports.ts:113`). The container's repositories and adapters satisfy
   them structurally; secrets-backed adapters go in as functions
   (`github: () => container.github()`), so a missing key still surfaces on first use.
   Tests pass in-memory fakes (`test/repos-service.test.ts`, `test/pulls-service.test.ts`,
@@ -137,17 +138,17 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   (`vitest.config.ts:18-30`); `dotenv` never overrides a variable that is already set.
   `appWith` also overrides `secrets` and `openrouter` (`test/reviews.it.test.ts:126-130`),
   because "run all enabled agents reviews with each enabled agent"
-  (`test/reviews.it.test.ts:505-514`) runs the seeded OpenRouter agents
-  (`src/db/seed.ts:12`, `src/platform/container.ts:255-258`).
+  (`test/reviews.it.test.ts:602-611`) runs the seeded OpenRouter agents
+  (`src/db/seed.ts:14`, `src/platform/container.ts:261-264`).
 
 ## Modules and request context
 
-- The registry is static: `settings, repos, pulls, polling, workspace, agents, reviews,
-  repoIntel` (`src/modules/index.ts:24-33`); `:15-18` says why there is no autoload.
+- The registry is static: `settings, repos, pulls, polling, workspace, agents, skills, reviews,
+  repoIntel` (`src/modules/index.ts:26-36`); `:16-19` says why there is no autoload.
   `@fastify/autoload` is still a dependency (`package.json:22`) that nothing imports.
 - Each module is a plain async plugin registered with `await` (`src/app.ts:262-264`), so
-  it is encapsulated and inherits `app.container` and the root error handler. Seven of
-  the eight call `withTypeProvider<ZodTypeProvider>()` (e.g. `src/modules/reviews/routes.ts:22`).
+  it is encapsulated and inherits `app.container` and the root error handler. Eight of
+  the nine call `withTypeProvider<ZodTypeProvider>()` (e.g. `src/modules/reviews/routes.ts:22`).
   `workspace` declares no schema at all (`src/modules/workspace/routes.ts:12`).
 - Job handlers are registered when their module registers (`src/modules/repos/routes.ts:32`,
   `src/modules/repo-intel/routes.ts:30`). The main GET routes (repos, the PR list and detail,
@@ -159,7 +160,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   accepts only the known preference keys, so an unknown key is a 422, not a new stored row
   (`src/vendor/shared/contracts/platform.ts:102-103`).
 - `getContext` resolves the user and the workspace (`src/modules/_shared/context.ts:15-24`).
-  `LocalNoAuthProvider` looks up the seeded `you@local` / `default` (`src/db/seed.ts:28-29`,
+  `LocalNoAuthProvider` looks up the seeded `you@local` / `default` (`src/db/seed.ts:39-40`,
   passed in by the container) through its `IdentityStore` port — the workspace repository
   (`src/adapters/auth/local.ts:4-14`, `src/modules/workspace/repository.ts:26-40`) — once,
   and caches them for the process lifetime (`src/adapters/auth/local.ts:23-47`): after a
@@ -180,7 +181,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
 | Thrown | Status · `code` | Where |
 | ------ | --------------- | ----- |
 | route schema failure | 422 · `validation_error` (`details` = issues) | `src/app.ts:214-223` |
-| `AppError` (default 400), `NotFoundError`, `ValidationError`, `ExternalServiceError`, `ConfigError` | own status: 400, 404, 422, 502, 500; a 5xx one is also logged | `src/app.ts:231-237`, `src/platform/errors.ts:7-41` |
+| `AppError` (default 400), `NotFoundError`, `ValidationError`, `ConflictError`, `ExternalServiceError`, `ConfigError` | own status: 400, 404, 422, 409, 502, 500; a 5xx one is also logged | `src/app.ts:231-237`, `src/platform/errors.ts:7-48` |
 | a 4xx that Fastify or a plugin raises: malformed JSON, a body over 1 MiB, an unsupported content type, the rate limit | its status · `bad_request`, `payload_too_large`, `unsupported_media_type`, `rate_limited`, …, with Fastify's message | `src/app.ts:24-36`, `:244-250` |
 | anything else, a `ZodError` from our own data (a stored snapshot, a provider's answer) included | 500 · `internal_error`, message `Internal error`; the error itself only goes to the log | `src/app.ts:238-243`, `:251-252` |
 | unknown route | 404 · `not_found` | `src/app.ts:255-258` |
@@ -209,7 +210,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   check passes; a failed check keeps the old key and says `— the key was not saved`
   (`src/modules/settings/service.ts:44-62`; tests `test/settings-service.test.ts:48-72`).
 - A missing key makes the container getters throw `ConfigError`, which is a 500 `config_error`
-  (`src/platform/container.ts:223`, `:246`, `:254`, `:261`). Inside a review it fails the run instead.
+  (`src/platform/container.ts:229`, `:252`, `:260`, `:267`). Inside a review it fails the run instead.
 
 ## JobRunner (`src/platform/jobs.ts`)
 
@@ -237,10 +238,10 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   On shutdown `close()` fails the jobs that have not started with `The API shut down before
   this job finished` and waits up to the grace period for the running ones (`src/platform/jobs.ts:209-221`;
   test `test/jobs.test.ts:144-165`). Tests wait with `app.container.jobs.onIdle()`
-  (`test/integration.it.test.ts:105`), which also waits for jobs queued behind their repo (`src/platform/jobs.ts:199-202`).
+  (`test/integration.it.test.ts:196`), which also waits for jobs queued behind their repo (`src/platform/jobs.ts:199-202`).
 - **Reviews do not use it.** They are fire-and-forget into their own queue: `container.reviewQueue`, a
   p-queue that runs `REVIEW_CONCURRENCY` review requests at once (default 2) while the rest wait
-  (`src/platform/container.ts:77`, `src/modules/reviews/service.ts:130-143`); see
+  (`src/platform/container.ts:78`, `src/modules/reviews/service.ts:130-143`); see
   [`../specs/review-flow.md`](../specs/review-flow.md).
 
 ## Writes that must stay consistent
@@ -260,19 +261,27 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   replaces the PR's files and commits and updates its body and stats in one transaction, on
   the unique `(pr_id, path)` and `(pr_id, sha)` indexes (`src/modules/pulls/repository.ts:225-274`,
   `src/db/schema/pulls.ts:51`, `:64`); the GitHub adapter reads every page of both
-  (`src/adapters/github/octokit.ts:190-203`). Tests: `test/integration.it.test.ts:222-246`, `:248-263`;
+  (`src/adapters/github/octokit.ts:190-203`). Tests: `test/integration.it.test.ts:313-337`, `:339-354`;
   all pages, the incremental stop, batched stats and the chunked upsert: `test/octokit-pulls.test.ts`,
-  `test/pulls-service.test.ts`, `test/integration.it.test.ts:115-157`, `:173-200`.
+  `test/pulls-service.test.ts`, `test/integration.it.test.ts:206-248`, `:264-291`.
 - Adding a repo is one insert that ignores a conflict on `(workspace_id, lower(full_name))`,
   so the same repo in another letter case, or added twice at once, stays one repo
   (`src/modules/repos/repository.ts:38-59`, `src/db/schema/repos.ts:26`;
-  test `test/integration.it.test.ts:210-220`).
-- An agent's config edit and a change to its skill list each bump `version` and write that
-  version's snapshot in one transaction that locks the agent row
-  (`src/modules/agents/repository.ts:82-127`, `:200-235`); tests
-  `test/agents-versions.it.test.ts:200-257`. Linking a skill that isn't in the agent's
-  workspace is a 404 `Skill not found`, checked before that transaction
-  (`src/modules/agents/service.ts:119-124`; test `test/agents-versions.it.test.ts:259-276`).
+  test `test/integration.it.test.ts:301-311`).
+- An agent's config edit and a change to its skill links — the set, the order or a per-agent
+  `enabled` flag — each bump `version` and write that version's snapshot in one transaction that
+  locks the agent row (`src/modules/agents/repository.ts:92-137`, `:261-298`). The snapshot's
+  `skills` lists the enabled links' ids in prompt order and `skill_links` every link with its flag
+  (`:144-160`); tests `test/agents-versions.it.test.ts:200-260`, `:262-317`. Linking a skill that
+  isn't in the agent's workspace is a 404 `Skill not found`, checked before that transaction
+  (`src/modules/agents/service.ts:129-134`; test `test/agents-versions.it.test.ts:333-349`).
+- A skill's content edit (name, description, type or body) bumps `skills.version` and writes a
+  `skill_versions` snapshot with a note in one transaction that locks the skill row; toggling
+  `enabled` alone writes no version, and a restore is a new version (`src/modules/skills/domain.ts:90-108`,
+  `src/modules/skills/repository.ts:57-113`). A name taken in the workspace hits the unique
+  `skills_ws_name_uq` index and is a 409 `conflict` (`src/db/pg-errors.ts:8-15`). Deleting a skill
+  cascades its versions and its agent links (`src/db/schema/skills.ts`, `src/db/schema/agents.ts`),
+  without bumping those agents' versions; tests `test/skills.it.test.ts`.
 - Money (`cost_usd` on `agent_runs`, `eval_runs`, `ci_runs`) is `numeric` since migration
   `0013`: exact in the database, a `number` in JS (`src/db/schema/runs.ts:27`); the PR list's
   COST is summed in SQL (`src/modules/pulls/repository.ts:137-147`).

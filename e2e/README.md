@@ -34,17 +34,17 @@ A spec lives in `specs/NN-name.flow.json`:
   run with its name and what is wrong.
 - Locators are deterministic only (`--url`, `--text`, `find role|text|label`).
   We never use the AI `chat` command, so runs are stable and key-free.
-- agent-browser 0.27 quirks, found writing flow 08: `find … click` clicks by coordinates
+- agent-browser 0.27 quirks, found writing the review-journey flow (now 09): `find … click` clicks by coordinates
   without scrolling the app shell's inner pane, so a target below the fold is missed
   silently (the step still passes) — give the flow a taller `set viewport`; `find label`
   matches only a `<label>`, so an icon button with `aria-label` needs
   `find role button --name`; `wait --text` matches rendered text, so a CSS-uppercased
   label (`SectionLabel`) must be matched in capitals or not at all.
 
-Flows 01–07 only read the seeded data (the demo repo `acme/payments-api`, PR
-#482, the seeded agents). Flow 08 writes — it runs a review and accepts a finding —
+Flows 01–08 only read the seeded data (the demo repo `acme/payments-api`, PR
+#482, the seeded agents and skills). Flow 09 writes — it runs a review and accepts a finding —
 and relies on the API's fake LLM (`DEVDIGEST_FAKE_LLM=1`), so no flow calls a real
-model. Against a dev API without it, flow 08 would bill your OpenRouter key.
+model. Against a dev API without it, flow 09 would bill your OpenRouter key.
 
 > **Precondition: a freshly-seeded DB.** Flow `02` follows the home redirect to
 > the *first* repo, so it assumes the seeded demo repo is the only one. CI
@@ -117,4 +117,5 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
-| `08-review-journey` | PR #482 → Run Review → live run → fake finding → Accept → run trace (writes; fake LLM) |
+| `08-skills-lab` | `/skills` → open `branch-coverage` → Preview tab shows the rendered block ("When to apply:") → Test Quality Reviewer → Skills tab → "3 of 3 enabled" (read-only) |
+| `09-review-journey` | PR #482 → Run Review → live run → fake finding → Accept → run trace (writes; fake LLM) |

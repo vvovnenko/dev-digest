@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import {
   Agent,
+  AgentSkillLink,
   AgentVersion,
   PrDetail,
   PrMeta,
@@ -18,6 +19,9 @@ import {
   RunTrace,
   SecretsStatus,
   Settings,
+  Skill,
+  SkillAgentUse,
+  SkillVersion,
 } from '@devdigest/shared';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
@@ -86,5 +90,22 @@ d('API responses match the shared contracts (Testcontainers pg)', () => {
     await read(`/agents/${agents[0]!.id}/versions`, z.array(AgentVersion));
     await read('/settings', Settings);
     await read('/settings/secrets-status', SecretsStatus);
+  });
+
+  it('skills, their versions and users, and an agent\'s skill links', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/skills',
+      payload: { name: 'contract-skill', description: 'Apply always.', type: 'rubric', body: '# Rule' },
+    });
+    expect(created.statusCode).toBe(201);
+    const skill = Skill.parse(created.json());
+    await read('/skills', z.array(Skill));
+    await read(`/skills/${skill.id}`, Skill);
+    await read(`/skills/${skill.id}/versions`, z.array(SkillVersion));
+    await read(`/skills/${skill.id}/agents`, z.array(SkillAgentUse));
+    const agents = await read('/agents', z.array(Agent));
+    expect(agents.every((a) => typeof a.skill_count === 'number')).toBe(true);
+    await read(`/agents/${agents[0]!.id}/skills`, z.array(AgentSkillLink));
   });
 });

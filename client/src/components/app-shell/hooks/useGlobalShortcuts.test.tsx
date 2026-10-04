@@ -69,6 +69,14 @@ describe("useGlobalShortcuts", () => {
     expect(mutate).toHaveBeenCalledTimes(1);
   });
 
+  it("`g s` goes to Skills", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.keyboard("gs");
+    expect(push).toHaveBeenCalledWith("/skills");
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
   it("Cmd/Ctrl+K opens the palette and ? opens the shortcuts help", async () => {
     const user = userEvent.setup();
     const onOpenPalette = vi.fn();

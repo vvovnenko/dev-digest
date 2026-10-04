@@ -3,7 +3,7 @@
     "noDescription": "No description",
     "skillCount": "{count, plural, one {# skill} other {# skills}}",
     "delete": "Delete agent",
-    "confirmDelete": "Delete agent \"{name}\"? This cannot be undone.",
+    "confirmDelete": "\"{name}\" will be permanently removed. This cannot be undone.",
     "open": "Open {name}"
   },
   "list": {
@@ -94,7 +94,22 @@
     "title": "Skills",
     "enabledCount": "{linked} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Drag to reorder.",
+    "dragHandle": "Reorder {name}",
+    "keyboardHint": "Space picks a skill up, the arrow keys move it, Space drops it, Escape cancels.",
+    "reorderOffWhileFiltering": "Clear the filter to reorder",
+    "lifted": "{name} picked up, position {position} of {total}.",
+    "moved": "{name} moved to position {position} of {total}.",
+    "cancelled": "{name} put back at position {position}.",
+    "globallyDisabled": "disabled globally",
+    "globallyDisabledTitle": "Turned off on the Skills page — no agent receives it until it is turned back on.",
+    "open": "Open",
+    "openSkill": "Open {name}",
+    "loadError": "Couldn’t load this agent’s skills.",
+    "noMatch": "No skill matches “{q}”.",
+    "emptyTitle": "No skills yet",
+    "emptyBody": "Create or import a skill on the Skills page, then attach it here.",
+    "emptyCta": "Go to Skills"
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."

@@ -2,6 +2,7 @@ import type {
   Agent,
   AgentCreate,
   AgentSkillLink,
+  AgentSkillLinkInput,
   AgentUpdate,
   AgentVersion,
   ModelInfo,
@@ -31,13 +32,22 @@ export class AgentsService {
   constructor(private deps: AgentDeps) {}
 
   async list(workspaceId: string): Promise<Agent[]> {
-    const rows = await this.deps.agents.list(workspaceId);
-    return rows.map(toAgentDto);
+    const [rows, counts] = await Promise.all([
+      this.deps.agents.list(workspaceId),
+      this.deps.agents.skillCounts(workspaceId),
+    ]);
+    return rows.map((row) => toAgentDto(row, counts.get(row.id) ?? 0));
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
     const row = await this.deps.agents.getById(workspaceId, id);
-    return row ? toAgentDto(row) : undefined;
+    return row ? toAgentDto(row, await this.skillCount(workspaceId, id)) : undefined;
+  }
+
+  /** The agent's enabled skill links. */
+  private async skillCount(workspaceId: string, agentId: string): Promise<number> {
+    const counts = await this.deps.agents.skillCounts(workspaceId, [agentId]);
+    return counts.get(agentId) ?? 0;
   }
 
   /** Delete an agent (and its versions/skill-links, via cascade). */
@@ -60,7 +70,7 @@ export class AgentsService {
       enabled: input.enabled,
       createdBy: userId ?? null,
     });
-    return toAgentDto(row);
+    return toAgentDto(row, 0);
   }
 
   async update(
@@ -80,7 +90,7 @@ export class AgentsService {
       ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
     });
-    return row ? toAgentDto(row) : undefined;
+    return row ? toAgentDto(row, await this.skillCount(workspaceId, id)) : undefined;
   }
 
   /**
@@ -110,10 +120,10 @@ export class AgentsService {
     return row ? toAgentVersionDto(row) : undefined;
   }
 
-  /** Linked skills for an agent as AgentSkillLink[] (ordered). */
+  /** Linked skills for an agent as AgentSkillLink[] (ordered, with the per-agent flag). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.deps.agents.skillLinks(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skillId, order: l.order }));
+    return links.map((l) => ({ agent_id: agentId, skill_id: l.skillId, order: l.order, enabled: l.enabled }));
   }
 
   /** Linking a skill from another workspace (or a made-up id) is a 404, not a DB error. */
@@ -124,18 +134,32 @@ export class AgentsService {
   }
 
   /**
-   * Set / reorder the agent's linked skills. If `skillIds` is provided, replaces
-   * the whole set in that order. Returns the resulting ordered links.
+   * Replace the agent's whole skill list: array order = prompt order, each link
+   * with its per-agent flag (the agent editor's Skills tab sends this).
    */
+  async setSkillLinks(
+    workspaceId: string,
+    agentId: string,
+    links: AgentSkillLinkInput[],
+  ): Promise<AgentSkillLink[] | undefined> {
+    await this.assertSkillsInWorkspace(workspaceId, links.map((l) => l.skill_id));
+    const next = links.map((l) => ({ skillId: l.skill_id, enabled: l.enabled }));
+    const found = await this.deps.agents.replaceSkills(workspaceId, agentId, () => next);
+    if (!found) return undefined;
+    return this.skillLinks(agentId);
+  }
+
+  /** Set / reorder the linked skills by id, every link enabled. */
   async setSkills(
     workspaceId: string,
     agentId: string,
     skillIds: string[],
   ): Promise<AgentSkillLink[] | undefined> {
-    await this.assertSkillsInWorkspace(workspaceId, skillIds);
-    const found = await this.deps.agents.replaceSkills(workspaceId, agentId, () => skillIds);
-    if (!found) return undefined;
-    return this.skillLinks(agentId);
+    return this.setSkillLinks(
+      workspaceId,
+      agentId,
+      skillIds.map((skill_id) => ({ skill_id, enabled: true })),
+    );
   }
 
   /** Link a single skill (append or set order) — additive to existing links. */
@@ -146,7 +170,9 @@ export class AgentsService {
     order?: number,
   ): Promise<AgentSkillLink[] | undefined> {
     await this.assertSkillsInWorkspace(workspaceId, [skillId]);
-    const found = await this.deps.agents.replaceSkills(workspaceId, agentId, (ids) => withSkillAt(ids, skillId, order));
+    const found = await this.deps.agents.replaceSkills(workspaceId, agentId, (links) =>
+      withSkillAt(links, skillId, order),
+    );
     if (!found) return undefined;
     return this.skillLinks(agentId);
   }

@@ -49,6 +49,8 @@
     "pullRequest": "PR #{number}",
     "agents": "Agents",
     "agentEditor": "Agent editor",
+    "skills": "Skills",
+    "skillEditor": "Skill editor",
     "settings": "Settings",
     "onboarding": "Add repository",
     "notFound": "Not found",

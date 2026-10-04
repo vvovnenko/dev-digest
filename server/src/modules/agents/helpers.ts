@@ -8,8 +8,8 @@ import type { AgentRecord, AgentVersionRecord } from './domain.js';
  * implementations.
  */
 
-/** Map a stored agent to the public `Agent` DTO. */
-export function toAgentDto(row: AgentRecord): Agent {
+/** Map a stored agent to the public `Agent` DTO; `skillCount` = its enabled skill links. */
+export function toAgentDto(row: AgentRecord, skillCount?: number): Agent {
   return {
     id: row.id,
     name: row.name,
@@ -23,6 +23,7 @@ export function toAgentDto(row: AgentRecord): Agent {
     strategy: row.strategy as ReviewStrategy,
     ci_fail_on: row.ciFailOn as CiFailOn,
     repo_intel: row.repoIntel,
+    ...(skillCount !== undefined ? { skill_count: skillCount } : {}),
   };
 }
 

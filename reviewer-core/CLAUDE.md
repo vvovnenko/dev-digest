@@ -53,6 +53,8 @@ npm run coverage   # v8 report, no thresholds
   findings under `failOn` (`src/output/to-review.ts:48-51`) — this supersedes the line above.
 - The `skills` / `memory` / `specs` prompt slots exist, but the starter server
   never passes them — they are filled in later lessons.
+- Since L02 the server passes `skills` as `PromptSkill[]` (enabled links of enabled skills, in
+  agent order), each rendered by `renderSkill`; this supersedes the line above for skills.
 - `exactOptionalPropertyTypes` is on here, in server/ and e2e/: an optional field you pass as
   `undefined` needs `?: T | undefined` (input bags like `PromptParts`), or spread it conditionally.
 

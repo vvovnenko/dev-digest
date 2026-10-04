@@ -62,6 +62,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   - **2026-09-28** — Done: the local `SEV_COLOR` maps are gone; FindingCard and the trace's FindingsSection read `SEV[severity].c`. Evidence: `src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:45`
 - **2026-09-27** — The `comment` verdict has two colours that render together: `--warn` in the Review-run accordion header and `--info` in the `VerdictBanner` inside it → ask which one is intended before unifying them or reusing either map for new UI (e.g. verdict filter chips). Evidence: `src/app/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:18`, `src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/constants.ts:16`
   - **2026-09-28** — Resolved: the user chose `--info`; `VERDICT_META` at the route rung is the one owner for the accordion header and the VerdictBanner. Evidence: `src/app/(shell)/repos/[repoId]/pulls/[number]/constants.ts:21`
+- **2026-10-03** — `AgentEditor` keeps `ConfigTab` mounted under `<div hidden>` while another tab shows, because the draft (only the changed fields) lives in ConfigTab's local state and unmounting drops it → add new agent tabs beside it; never swap ConfigTab out by tab. The skill editor does the same. Evidence: `src/app/(shell)/agents/[id]/_components/AgentEditor/AgentEditor.tsx:25`
+- **2026-10-04** — The vendored `Modal` is no portal: its `position: fixed` overlay renders where it is called, so a modal inside a card inherits a disabled card's `opacity: 0.6` and its clicks (Delete, ✕, backdrop) bubble to the card's `onClick`, which opens the skill or agent → render a card's modal beside the card in a fragment, as `ConfirmDeleteModal` is; SkillCard's delete tests fail when it is nested. Evidence: `src/vendor/ui/kit/Modal.tsx:20`, `src/app/(shell)/skills/_components/SkillCard/styles.ts:11`, `src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:103`
 
 ## Tool & library notes
 
@@ -75,6 +77,9 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-28** — An SSE stream the server ends normally fires `EventSource.onerror` with `readyState` CONNECTING and the browser reconnects after the `retry` fastify-sse-v2 sends (3000 ms) — so "close on any error" also killed real reconnects, and a reconnect replays the run from seq 1 → end on an explicit terminal event (`done`), treat only CLOSED as final, and de-duplicate by run + seq. Evidence: `../server/node_modules/fastify-sse-v2/lib/plugin.js:38`, `src/lib/hooks/reviews.ts:251`, `src/lib/hooks/reviews.test.tsx:98`
 - **2026-09-28** — The client's ESLint config loads no `eslint-plugin-react-hooks`, so an `// eslint-disable-next-line react-hooks/exhaustive-deps` directive is itself a lint error ("Definition for rule … was not found"); the two old ones became plain comments on the same lines → don't add such a directive without adding the plugin. Evidence: `eslint.config.mjs:10`, `src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:52`, `src/lib/hooks/reviews.ts:260`.
 - **2026-09-28** — After a hermetic e2e run, `client/.next-e2e/types/**` holds generated `.ts` files that `pnpm lint` picked up (11 errors) until the config ignored `.next-e2e/**` like `.next/**`. Evidence: `eslint.config.mjs:10`.
+- **2026-10-03** — `userEvent.upload` honours the input's `accept` by default: a file of another type is dropped silently and no change event fires, so a test of the component's own type check passes vacuously → `userEvent.setup({ applyAccept: false })` when testing client-side rejection. Evidence: `src/app/(shell)/skills/_components/AddSkillMenu/_components/ImportSkillDrawer/ImportSkillDrawer.test.tsx:58`
+- **2026-10-03** — The vendored `Toggle` takes only `on`/`onChange`/`size` (no `aria-label`), so its switch has no accessible name → wrap it in a `<label>` with visually hidden text; `getByRole("switch", { name })` then finds it. Evidence: `src/vendor/ui/primitives/Toggle.tsx:3`, `src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:66-69`
+  - **2026-10-04** — Line evidence moved: the card's toggle `<label>` is now `SkillCard.tsx:71-78`. Evidence: `src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:71`
 
 ## Recurring errors & fixes
 
@@ -117,6 +122,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-28** — Wave 3 (shell layout, URL state, key factory + optimistic actions, SSE done/dedup, single shortcut owner, a11y, i18n, error pages, next/font): +12 (Tool & library notes ×2, What doesn't work +1 and ×3 fixed, Codebase patterns ×3 resolved, Doc drift fixed, Open question resolved)
 - **2026-09-28** — Wave 4 (ESLint + user-event + coverage, synced vendor/shared, AgentCreate/AgentUpdate contracts, data-layer tests): +2 (Tool & library notes)
 - **2026-09-29** — Wave 5 (README/TESTING test-mocking claims, ui-architecture pitfall): +4 (Doc drift fix notes)
+- **2026-10-03** — L02 Skills Lab (skills pages, agent Skills tab, trace blocks): +3 (Codebase patterns, Tool & library notes ×2)
+- **2026-10-04** — Delete-confirm modal on skill/agent cards (`ConfirmDeleteModal`, copy, tests, pages.md citations): +1 (Codebase patterns) + 1 line-evidence note
 
 ## Open questions
 

@@ -58,17 +58,36 @@ export function isConfigChange(current: AgentConfig, patch: ConfigChangePatch): 
   return keys.some((k) => patch[k] !== undefined && patch[k] !== current[k]) || patch.outputSchema !== undefined;
 }
 
-/**
- * Skills are part of the versioned config (the snapshot records them), so a
- * different set or order is a new version too.
- */
-export function skillsChanged(before: readonly string[], after: readonly string[]): boolean {
-  return before.length !== after.length || before.some((id, i) => id !== after[i]);
+/** One entry of an agent's ordered skill list; off = kept in place, left out of the prompt. */
+export interface SkillLink {
+  skillId: string;
+  enabled: boolean;
 }
 
-/** `ids` with `skillId` moved to (or inserted at) `order`; the end when order is omitted. */
-export function withSkillAt(ids: readonly string[], skillId: string, order?: number): string[] {
-  const rest = ids.filter((id) => id !== skillId);
+/**
+ * Skills are part of the versioned config (the snapshot records them), so a
+ * different set, order or per-agent flag is a new version too.
+ */
+export function linksChanged(before: readonly SkillLink[], after: readonly SkillLink[]): boolean {
+  return (
+    before.length !== after.length ||
+    before.some((l, i) => l.skillId !== after[i]!.skillId || l.enabled !== after[i]!.enabled)
+  );
+}
+
+/**
+ * `links` with `skillId` moved to (or inserted at) `order`; the end when order is
+ * omitted. A moved link keeps its flag; a new one starts enabled.
+ */
+export function withSkillAt(links: readonly SkillLink[], skillId: string, order?: number): SkillLink[] {
+  const existing = links.find((l) => l.skillId === skillId);
+  const rest = links.filter((l) => l.skillId !== skillId);
   const at = Math.max(0, Math.min(order ?? rest.length, rest.length));
-  return [...rest.slice(0, at), skillId, ...rest.slice(at)];
+  const link: SkillLink = { skillId, enabled: existing?.enabled ?? true };
+  return [...rest.slice(0, at), link, ...rest.slice(at)];
+}
+
+/** The ids that reach the prompt (enabled links), in order — the snapshot's `skills`. */
+export function enabledSkillIds(links: readonly SkillLink[]): string[] {
+  return links.filter((l) => l.enabled).map((l) => l.skillId);
 }

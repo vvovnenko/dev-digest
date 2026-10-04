@@ -109,10 +109,10 @@ Supersedes acceptance criterion 2 and "failed/cancelled run" in the `NULL` list 
 
 - A failed or cancelled run stores the tokens and `cost_usd` its LLM calls were billed
   for, summed over the calls and repair attempts made before it stopped; `NULL` only when
-  the error reports no usage (`src/modules/reviews/run-executor.ts:303-314`,
+  the error reports no usage (`src/modules/reviews/run-executor.ts:322-333`,
   `../reviewer-core/src/review/run.ts:234-238`). The Timeline therefore shows such a run's
   cost; a failed run without a known cost still reads `—`. The run's trace reports the
-  same usage in its stats (`src/modules/reviews/run-executor.ts:434-441`).
+  same usage in its stats (`src/modules/reviews/run-executor.ts:454-461`).
   Tests: `test/run-lifecycle.it.test.ts:331-343,425-435`.
 - The PR list's `COST` is unchanged: it still sums `done` runs only, so a failed run
   adds nothing whatever it cost.

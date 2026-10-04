@@ -1,5 +1,6 @@
 /* PromptBlock — one labelled, collapsible prompt segment with copy + fullscreen
-   actions; fullscreen opens PromptModalBody in a Modal. */
+   actions; fullscreen opens PromptModalBody in a Modal. `meta` is a short note
+   beside the label (a skill block's "+N tokens"). */
 "use client";
 
 import React from "react";
@@ -20,7 +21,17 @@ const miniBtnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export function PromptBlock({
+  label,
+  text,
+  color,
+  meta,
+}: {
+  label: string;
+  text: string;
+  color: string;
+  meta?: string;
+}) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
   const [full, setFull] = React.useState(false);
@@ -35,6 +46,11 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
       <div onClick={() => setOpen((o) => !o)} style={s.promptHead}>
         <span style={s.promptDot(color)} />
         <span style={s.promptLabel}>{label}</span>
+        {meta && (
+          <span className="mono tnum" style={s.promptMeta}>
+            {meta}
+          </span>
+        )}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"

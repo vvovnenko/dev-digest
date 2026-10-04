@@ -33,13 +33,15 @@ The engine also accepts optional prompt slots the **course lessons** start
 feeding it — `skills` (L02), `memory` (L07), `specs` (L05) — plus a map-reduce
 path (`reduceReviews` / `sliceDiff`) and a `toReviewPayload()` CI payload helper
 used from L06. The server passes the diff, system prompt, task, PR title and author,
-and, when it has them, the repo map, the callers digest and the PR description
-(`../server/src/modules/reviews/run-executor.ts:187-208`); `skills`, `memory` and
-`specs` are omitted, so `assemblePrompt` simply leaves those sections out.
+and, when it has them, the repo map, the callers digest, the agent's enabled skills (L02,
+each rendered as its own `### <name>` block under `## Skills / rules`) and the PR description
+(`../server/src/modules/reviews/run-executor.ts:204-233`); `memory` and `specs` are still
+omitted, so `assemblePrompt` simply leaves those sections out.
 
 ## Public API
 
-Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
+Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` / `renderSkill` /
+`skillBlocks` / `estimateTokens` and the `PromptSkill` type (prompt),
 `groundFindings` / `groundingSummary` (grounding), `toJsonSchema` / `extractJson`
 / `parseWithRepair` (structured output), the `reviewPullRequest` entrypoint,
 `reduceReviews` / `sliceDiff` (map-reduce), `toReviewPayload` / `gateTriggered` /
@@ -48,7 +50,7 @@ Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
 Contracts (`Review`, `Finding`, `Verdict`, …) come from
 `@devdigest/shared`. `OpenRouterProvider` is not exported there, so importing the engine
 never pulls in an HTTP client: the server's container imports it from the
-`@devdigest/reviewer-core/llm/openrouter.js` subpath (`src/index.ts:69-71`).
+`@devdigest/reviewer-core/llm/openrouter.js` subpath (`src/index.ts:73-75`).
 
 ## Testing
 

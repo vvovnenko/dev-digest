@@ -36,9 +36,25 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCall>;
 
+/**
+ * One enabled skill as rendered into the prompt's `## Skills / rules` section, in
+ * prompt order. `tokens` is an estimate (ceil(chars / 4)) of `text`.
+ */
+export const PromptSkillBlock = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number().int().nullish(),
+  tokens: z.number().int(),
+  text: z.string().nullish(),
+});
+export type PromptSkillBlock = z.infer<typeof PromptSkillBlock>;
+
 export const PromptAssembly = z.object({
   system: z.string(),
+  /** The whole `## Skills / rules` body (every block joined); null when no skill is enabled. */
   skills: z.string().nullish(),
+  /** Per-skill breakdown of `skills`; absent in traces written before L02. */
+  skill_blocks: z.array(PromptSkillBlock).nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
   /** Callers-of-changed-symbols digest (T1.3); null when absent. */

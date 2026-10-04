@@ -4,7 +4,13 @@
  * truncation, and ordering (before the diff).
  */
 import { describe, it, expect } from 'vitest';
-import { assemblePrompt, wrapUntrusted } from '../src/prompt.js';
+import {
+  assemblePrompt,
+  estimateTokens,
+  renderSkill,
+  skillBlocks,
+  wrapUntrusted,
+} from '../src/prompt.js';
 
 function userOf(parts: Parameters<typeof assemblePrompt>[0]): string {
   const { messages } = assemblePrompt(parts);
@@ -102,5 +108,67 @@ describe('assemblePrompt — PR title and author', () => {
 
   it('omits the block when no PR is given', () => {
     expect(userOf({ system: 'sys', diff: 'DIFF' })).not.toContain('## Pull request');
+  });
+});
+
+describe('assemblePrompt — ## Skills / rules', () => {
+  const rubric = {
+    id: 's1',
+    name: 'branch-coverage',
+    description: 'Apply when the diff adds\n  a branch.',
+    body: '\n## Rule\nFlag every new branch without a test.\n',
+    version: 3,
+  };
+  const nudge = { id: 's2', name: 'edge-cases', description: '  ', body: 'Check empty input.' };
+
+  it('renders each skill as its own block in the golden format', () => {
+    expect(renderSkill(rubric)).toBe(
+      '### branch-coverage\nWhen to apply: Apply when the diff adds a branch.\n\n## Rule\nFlag every new branch without a test.',
+    );
+    // A blank description drops the "When to apply" line.
+    expect(renderSkill(nudge)).toBe('### edge-cases\n\nCheck empty input.');
+  });
+
+  it('keeps the given order, after the PR description and before memory and the diff', () => {
+    const user = userOf({
+      system: 'sys',
+      diff: 'DIFF',
+      prDescription: 'PR BODY',
+      skills: [nudge, rubric],
+      memory: ['MEM'],
+    });
+    const at = (s: string) => user.indexOf(s);
+    expect(at('## PR description')).toBeLessThan(at('## Skills / rules'));
+    expect(at('### edge-cases')).toBeLessThan(at('### branch-coverage'));
+    expect(at('### branch-coverage')).toBeLessThan(at('## Relevant memory'));
+    expect(at('## Relevant memory')).toBeLessThan(at('## Diff to review'));
+  });
+
+  it('does not wrap skills as untrusted data — they are instructions', () => {
+    const user = userOf({ system: 'sys', diff: 'DIFF', skills: [rubric] });
+    const section = user.slice(user.indexOf('## Skills / rules'), user.indexOf('## Diff to review'));
+    expect(section).not.toContain('<untrusted');
+    expect(systemOf({ system: 'sys', diff: 'DIFF', skills: [rubric] })).not.toContain('branch-coverage');
+  });
+
+  it('records the block and a per-skill token estimate in the assembly', () => {
+    const { assembly } = assemblePrompt({ system: 'sys', diff: 'DIFF', skills: [rubric, nudge] });
+    const blocks = skillBlocks([rubric, nudge]);
+    expect(assembly.skill_blocks).toEqual(blocks);
+    expect(blocks.map((b) => [b.id, b.name, b.version])).toEqual([
+      ['s1', 'branch-coverage', 3],
+      ['s2', 'edge-cases', null],
+    ]);
+    expect(blocks[0]!.tokens).toBe(Math.ceil(renderSkill(rubric).length / 4));
+    expect(assembly.skills).toBe(`${blocks[0]!.text}\n\n${blocks[1]!.text}`);
+    expect(estimateTokens('abcde')).toBe(2);
+  });
+
+  it('leaves the prompt byte-identical when no skill is enabled', () => {
+    const base = assemblePrompt({ system: 'sys', diff: 'DIFF', prDescription: 'PR BODY' });
+    const empty = assemblePrompt({ system: 'sys', diff: 'DIFF', prDescription: 'PR BODY', skills: [] });
+    expect(empty.messages).toEqual(base.messages);
+    expect(empty.assembly.skills).toBeNull();
+    expect(empty.assembly.skill_blocks).toBeNull();
   });
 });

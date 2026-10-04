@@ -16,6 +16,7 @@ import type {
   ReviewPull,
   ReviewRecord,
   ReviewRepoRef,
+  ReviewSkill,
   RunCompletion,
   RunFailure,
   RunUsage,
@@ -63,6 +64,8 @@ export interface ReviewStore {
 export interface AgentLookup {
   listEnabled(workspaceId: string): Promise<ReviewAgent[]>;
   getById(workspaceId: string, id: string): Promise<ReviewAgent | undefined>;
+  /** The skills the agent's prompt includes: enabled links to enabled skills, in link order. */
+  enabledSkills(workspaceId: string, agentId: string): Promise<ReviewSkill[]>;
 }
 
 /** Why a run was told to stop. */

@@ -135,4 +135,30 @@ describe('reviewPullRequest (engine)', () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
   });
+  it('sends enabled skills to the model, in order, and traces them per skill', async () => {
+    const seen: string[] = [];
+    const base = fixtureLlm(fixture);
+    const llm: LLMProvider = {
+      ...base,
+      async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
+        seen.push(req.messages.map((m) => m.content).join('\n'));
+        return base.completeStructured(req);
+      },
+    };
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'test quality reviewer',
+      model: 'gpt-4.1',
+      diff: CONFIG_DIFF,
+      llm,
+      skills: [
+        { id: 'a', name: 'branch-coverage', description: 'Apply to new branches.', body: 'RULE-A', version: 2 },
+        { id: 'b', name: 'edge-cases', description: '', body: 'RULE-B' },
+      ],
+    });
+    expect(seen).toHaveLength(1);
+    const prompt = seen[0]!;
+    expect(prompt).toContain('## Skills / rules\n### branch-coverage\nWhen to apply: Apply to new branches.\n\nRULE-A');
+    expect(prompt.indexOf('RULE-A')).toBeLessThan(prompt.indexOf('RULE-B'));
+    expect(outcome.assembly.skill_blocks?.map((b) => b.name)).toEqual(['branch-coverage', 'edge-cases']);
+  });
 });

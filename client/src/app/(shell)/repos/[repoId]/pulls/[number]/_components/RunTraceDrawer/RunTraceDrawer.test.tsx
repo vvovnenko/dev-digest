@@ -91,3 +91,48 @@ describe("Run Trace drawer — COST tile (server/specs/01-run-cost-badge.md)", (
     expect(traceEnabled).not.toContain(true);
   });
 });
+
+describe("Run Trace drawer — skills in the prompt assembly (server/specs/03-skills.md)", () => {
+  const openAssembly = async () => {
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Prompt assembly"));
+  };
+
+  it("shows one block per enabled skill with its version and added tokens", async () => {
+    currentTrace = {
+      ...TRACE,
+      prompt_assembly: {
+        ...TRACE.prompt_assembly,
+        skills: "### branch-coverage\n\nRULE-A\n\n### edge-cases\n\nRULE-B",
+        skill_blocks: [
+          { id: "s1", name: "branch-coverage", version: 3, tokens: 41, text: "### branch-coverage\n\nRULE-A" },
+          { id: "s2", name: "edge-cases", version: null, tokens: 9, text: "### edge-cases\n\nRULE-B" },
+        ],
+      },
+    };
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} running={false} onClose={() => {}} />);
+    await openAssembly();
+    expect(screen.getByText("Skills (dynamic) · 2 skills · +50 tokens")).toBeInTheDocument();
+    expect(screen.getByText("branch-coverage · v3")).toBeInTheDocument();
+    expect(screen.getByText("+41 tokens")).toBeInTheDocument();
+    expect(screen.getByText("edge-cases")).toBeInTheDocument();
+    expect(screen.getByText("+9 tokens")).toBeInTheDocument();
+    // The joined block is not repeated next to the per-skill blocks.
+    expect(screen.queryByText("Skills (dynamic)")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the single Skills block for a trace written before skill_blocks", async () => {
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} running={false} onClose={() => {}} />);
+    await openAssembly();
+    expect(screen.getByText("Skills (dynamic)")).toBeInTheDocument();
+    expect(screen.queryByText(/tokens$/)).not.toBeInTheDocument();
+  });
+
+  it("shows no skills block when the run had none", async () => {
+    currentTrace = { ...TRACE, prompt_assembly: { ...TRACE.prompt_assembly, skills: null, skill_blocks: null } };
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} running={false} onClose={() => {}} />);
+    await openAssembly();
+    expect(screen.getByText("System")).toBeInTheDocument();
+    expect(screen.queryByText(/Skills \(dynamic\)/)).not.toBeInTheDocument();
+  });
+});

@@ -1,5 +1,5 @@
 import type { LogLine } from "@devdigest/ui";
-import type { RunTrace } from "@devdigest/shared";
+import type { PromptSkillBlock, RunTrace } from "@devdigest/shared";
 
 interface RawEvent {
   t: string;
@@ -25,4 +25,9 @@ export function formatSeconds(ms: number): string {
 /** Token in→out summary (e.g. "12k→1.5k"). */
 export function formatTokens(tokensIn: number, tokensOut: number): string {
   return `${(tokensIn / 1000).toFixed(0)}k→${(tokensOut / 1000).toFixed(1)}k`;
+}
+
+/** The skills block's size: how many skills and the tokens they add together. */
+export function skillsSummary(blocks: readonly PromptSkillBlock[]): { count: number; tokens: number } {
+  return { count: blocks.length, tokens: blocks.reduce((sum, b) => sum + b.tokens, 0) };
 }

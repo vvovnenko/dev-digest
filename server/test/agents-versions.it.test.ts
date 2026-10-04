@@ -194,7 +194,7 @@ d('GET /agents/:id/versions', () => {
     const versionsOf = async (app: Awaited<ReturnType<typeof makeApp>>, agentId: string) =>
       (await app.inject({ method: 'GET', url: `/agents/${agentId}/versions` })).json() as {
         version: number;
-        config: { skills?: string[]; model: string };
+        config: { skills?: string[]; skill_links?: { skill_id: string; enabled: boolean }[]; model: string };
       }[];
 
     it('two concurrent config edits get two versions, each with its own snapshot', async () => {
@@ -247,12 +247,86 @@ d('GET /agents/:id/versions', () => {
         .from(t.workspaces)
         .where(eq(t.workspaces.name, 'default'));
       await expect(
-        new AgentsRepository(pg.handle.db).replaceSkills(ws!.id, agentId, () => [s1, unknown]),
+        new AgentsRepository(pg.handle.db).replaceSkills(ws!.id, agentId, () => [
+          { skillId: s1, enabled: true },
+          { skillId: unknown, enabled: true },
+        ]),
       ).rejects.toThrow();
 
       const links = (await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json() as { skill_id: string }[];
       expect(links.map((l) => l.skill_id)).toEqual([s1]);
       expect((await versionsOf(app, agentId))[0]!.version).toBe(2);
+      await app.close();
+    });
+
+    it('links carry a per-agent flag: order and flags are versioned, only enabled ids reach `skills`', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const [a, b, c] = [await newSkill('links-a'), await newSkill('links-b'), await newSkill('links-c')];
+      const post = (payload: object) => app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload });
+
+      const res = await post({
+        links: [
+          { skill_id: c, enabled: true },
+          { skill_id: a, enabled: false },
+          { skill_id: b, enabled: true },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual([
+        { agent_id: agentId, skill_id: c, order: 0, enabled: true },
+        { agent_id: agentId, skill_id: a, order: 1, enabled: false },
+        { agent_id: agentId, skill_id: b, order: 2, enabled: true },
+      ]);
+      let versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({
+        version: 2,
+        config: {
+          skills: [c, b],
+          skill_links: [
+            { skill_id: c, enabled: true },
+            { skill_id: a, enabled: false },
+            { skill_id: b, enabled: true },
+          ],
+        },
+      });
+
+      // The card count = enabled links, on the list and on the agent.
+      const listed = (await app.inject({ method: 'GET', url: '/agents' })).json() as { id: string; skill_count: number }[];
+      expect(listed.find((x) => x.id === agentId)!.skill_count).toBe(2);
+      expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().skill_count).toBe(2);
+
+      // Flipping one flag is a change → a new version.
+      await post({
+        links: [
+          { skill_id: c, enabled: true },
+          { skill_id: a, enabled: true },
+          { skill_id: b, enabled: true },
+        ],
+      });
+      versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({ version: 3, config: { skills: [c, a, b] } });
+
+      // Linking one that is already linked (disabled) keeps its flag.
+      await post({ links: [{ skill_id: a, enabled: false }] });
+      await post({ skill_id: a, order: 0 });
+      expect((await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json()).toEqual([
+        { agent_id: agentId, skill_id: a, order: 0, enabled: false },
+      ]);
+      await app.close();
+    });
+
+    it('a skill listed twice in links is a 422 and changes nothing', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const a = await newSkill('dup-a');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills`,
+        payload: { links: [{ skill_id: a, enabled: true }, { skill_id: a, enabled: false }] },
+      });
+      expect(res.statusCode).toBe(422);
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(1);
       await app.close();
     });
 

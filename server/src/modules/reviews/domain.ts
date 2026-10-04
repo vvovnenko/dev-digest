@@ -39,6 +39,15 @@ export interface ReviewAgent {
   version: number;
 }
 
+/** A skill the agent's prompt includes (an enabled link to an enabled skill). */
+export interface ReviewSkill {
+  id: string;
+  name: string;
+  description: string;
+  body: string;
+  version: number;
+}
+
 export interface ReviewRecord {
   id: string;
   prId: string;

@@ -1,7 +1,8 @@
-/* hooks/keys.ts — query keys for pull-request data. A key starts with the
-   resource and holds every queryFn input, so invalidating a prefix refreshes
+/* hooks/keys.ts — query keys for pull-request and skill data. A key starts with
+   the resource and holds every queryFn input, so invalidating a prefix refreshes
    everything under it: `prKeys.all(prId)` covers the PR's detail, reviews,
-   runs and comments; `runKeys.all` every run trace. */
+   runs and comments; `runKeys.all` every run trace; `skillKeys.all` every skill
+   list, detail, version history and usage list. */
 
 export const prKeys = {
   all: (prId: string) => ["pr", prId] as const,
@@ -20,4 +21,17 @@ export const repoKeys = {
   /** Every repo's PR list (the needs-review badge and list statuses). */
   allPulls: ["repo-pulls"] as const,
   pulls: (repoId: string) => ["repo-pulls", repoId] as const,
+};
+
+export const skillKeys = {
+  all: ["skills"] as const,
+  list: ["skills", "list"] as const,
+  detail: (skillId: string) => ["skills", skillId] as const,
+  versions: (skillId: string) => ["skills", skillId, "versions"] as const,
+  agents: (skillId: string) => ["skills", skillId, "agents"] as const,
+};
+
+/** An agent's ordered skill links — under the agent's own `["agent", id]` prefix. */
+export const agentSkillKeys = {
+  links: (agentId: string) => ["agent", agentId, "skills"] as const,
 };

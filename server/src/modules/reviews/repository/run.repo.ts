@@ -3,6 +3,7 @@ import type { Db, DbExecutor } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Finding, RunSummary, RunTrace } from '@devdigest/shared';
 import type { FindingRow } from '../../../db/rows.js';
+import { isUniqueViolation } from '../../../db/pg-errors.js';
 import { insertFindings, insertReview, type ReviewRow } from './review.repo.js';
 import { markReviewed } from './pull.repo.js';
 import type { NewReview, RunCompletion, RunFailure } from '../domain.js';
@@ -141,19 +142,6 @@ export async function pruneRunTraces(db: Db, before: Date): Promise<number> {
 }
 
 // ---- observability: agent_runs + run_traces -------------------------------
-
-/**
- * Postgres unique violation on `constraint` (postgres-js surfaces code + constraint_name).
- * Drizzle ≥ 0.44 wraps the driver's error in `DrizzleQueryError`, so walk the `cause` chain.
- */
-function isUniqueViolation(err: unknown, constraint: string): boolean {
-  let e: unknown = err;
-  for (let depth = 0; e && depth < 5; depth++, e = (e as { cause?: unknown }).cause) {
-    const pg = e as { code?: string; constraint_name?: string };
-    if (pg.code === '23505' && pg.constraint_name === constraint) return true;
-  }
-  return false;
-}
 
 /**
  * Create one `running` row per agent, all or none. Null when an agent already

@@ -361,6 +361,103 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await app.close();
   });
 
+  // ---- Skills in the prompt (server/specs/03-skills.md) --------------------
+  /** A skill created through the API; returns its id. */
+  async function makeSkill(app: Awaited<ReturnType<typeof appWithLlm>>, name: string, enabled = true) {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/skills',
+      payload: { name, description: `When ${name}.`, body: `BODY-${name}`, enabled },
+    });
+    return res.json().id as string;
+  }
+
+  /** An openai agent with `links` as its skill list, reviewed on a fresh PR. */
+  async function reviewWithSkills(
+    app: Awaited<ReturnType<typeof appWithLlm>>,
+    name: string,
+    links: { skill_id: string; enabled: boolean }[],
+  ) {
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+    const agent = (
+      await app.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: { name, provider: 'openai', model: 'gpt-4.1', system_prompt: 's' },
+      })
+    ).json();
+    if (links.length > 0) {
+      await app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { links } });
+    }
+    const body = (
+      await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } })
+    ).json();
+    const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    const trace = (await app.inject({ method: 'GET', url: `/runs/${body.runs[0].run_id}/trace` })).json();
+    return { run: run!, trace };
+  }
+
+  type TraceBlock = { name: string; version: number; tokens: number };
+
+  it('sends only enabled links to enabled skills, in the agent order, and traces each one', async () => {
+    const llm = new MockLLMProvider('openai', { structured: REVIEW_FIXTURE });
+    const app = await appWithLlm(llm);
+    const a = await makeSkill(app, 'rv-skill-a');
+    const b = await makeSkill(app, 'rv-skill-b');
+    const c = await makeSkill(app, 'rv-skill-c', false);
+    const dd = await makeSkill(app, 'rv-skill-d');
+
+    const { run, trace } = await reviewWithSkills(app, 'SkillsAgent', [
+      { skill_id: dd, enabled: true },
+      { skill_id: b, enabled: false },
+      { skill_id: a, enabled: true },
+      { skill_id: c, enabled: true },
+    ]);
+    expect(run.status).toBe('done');
+
+    const req = llm.calls.find((x) => x.method === 'completeStructured')!.req as StructuredRequest<unknown>;
+    const user = req.messages[1]!.content;
+    expect(user).toContain('## Skills / rules\n### rv-skill-d\nWhen to apply: When rv-skill-d.\n\nBODY-rv-skill-d');
+    expect(user.indexOf('### rv-skill-d')).toBeLessThan(user.indexOf('### rv-skill-a'));
+    expect(user).not.toContain('rv-skill-b'); // the link is off for this agent
+    expect(user).not.toContain('rv-skill-c'); // the skill is off everywhere
+    expect(req.messages[0]!.content).not.toContain('rv-skill'); // skills sit in the user message
+
+    const blocks = trace.prompt_assembly.skill_blocks as TraceBlock[];
+    expect(blocks.map((x) => [x.name, x.version])).toEqual([
+      ['rv-skill-d', 1],
+      ['rv-skill-a', 1],
+    ]);
+    const tokens = blocks.reduce((n, x) => n + x.tokens, 0);
+    expect(trace.log.map((l: { msg: string }) => l.msg)).toContain(`skills: 2 attached (+${tokens} tokens)`);
+    await app.close();
+  });
+
+  it('an agent with no enabled skill gets no Skills section and logs 0 attached', async () => {
+    const llm = new MockLLMProvider('openai', { structured: REVIEW_FIXTURE });
+    const app = await appWithLlm(llm);
+    const off = await makeSkill(app, 'rv-skill-off');
+    const { run, trace } = await reviewWithSkills(app, 'NoSkillsAgent', [{ skill_id: off, enabled: false }]);
+    expect(run.status).toBe('done');
+    const req = llm.calls.find((x) => x.method === 'completeStructured')!.req as StructuredRequest<unknown>;
+    expect(req.messages[1]!.content).not.toContain('## Skills / rules');
+    expect(trace.prompt_assembly.skills).toBeNull();
+    expect(trace.prompt_assembly.skill_blocks).toBeNull();
+    expect(trace.log.map((l: { msg: string }) => l.msg)).toContain('skills: 0 attached (+0 tokens)');
+    await app.close();
+  });
+
+  it("a failed run's trace still shows the skills it loaded", async () => {
+    // `{}` fails the Review schema → the provider throws → the run fails.
+    const app = await appWithLlm(new MockLLMProvider('openai', { structured: {} }));
+    const s = await makeSkill(app, 'rv-skill-failed');
+    const { run, trace } = await reviewWithSkills(app, 'FailingSkillsAgent', [{ skill_id: s, enabled: true }]);
+    expect(run.status).toBe('failed');
+    expect((trace.prompt_assembly.skill_blocks as TraceBlock[]).map((x) => x.name)).toEqual(['rv-skill-failed']);
+    expect(trace.prompt_assembly.skills).toContain('### rv-skill-failed');
+    await app.close();
+  });
+
   // ---- Findings by severity (server/specs/02-findings-by-severity.md) -----
   it('the PR list counts findings by severity for the latest review only', async () => {
     const db = pg.handle.db;

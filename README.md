@@ -70,7 +70,7 @@ Each package has its own README with deeper diagrams:
 - **Add repository** — paste a repo URL; the server clones and indexes it.
 - **Import pull requests** — pull all of a repo's PRs (open, merged, closed) and their diff, commits, body, and linked issue.
 - **View diff** — GitHub-like diff in the browser.
-- **Agents** — three built-in reviewers (General, Security, Performance) on OpenRouter; create/edit your own (model + system prompt).
+- **Agents** — four built-in reviewers (General, Security, Performance, and Test Quality — added in L02 with three linked skills) on OpenRouter; create/edit your own (model + system prompt), and attach reusable skills from the Skills Lab (L02).
 - **Run a review** — single-pass analysis returning structured findings (severity + score), with the grounding gate and repo-map context working from the start.
 
 ## What you build in the course

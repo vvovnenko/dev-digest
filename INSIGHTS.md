@@ -16,6 +16,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 ## What doesn't work
 
 - **2026-09-28** — Remapping `file:line` citations in docs by script after a code change mis-attributes bare `:N` shorthand: it means whatever file the writer had in mind, not the last one cited — `server/docs/architecture.md` cites `mocks.ts` lines right after a `reviews.it.test.ts` cite, and a sub-bullet inherits its parent's file — so an automated pass shifted correct `mocks.ts` numbers → remap only full-path citations automatically (from `git diff -U0` hunks) and check every bare `:N` near a changed file by hand; a final pass that every cited line exists catches only out-of-range ones. Evidence: `server/docs/architecture.md:79`
+- **2026-10-03** — Remapping `file:line` citations only near the lines you edited misses shifts from edits elsewhere in the file: a 2-line header comment added to `reviewer-core/src/prompt.ts` moved `wrapUntrusted` from `:31` to `:33`, and a region-only remap of `pipeline.md` kept the old number. `citations.mjs` can't help before a self-review (it needs `--run <id>`) → map every citation of a changed file through its `git diff -U0` hunks. Evidence: `.claude/skills/pr-self-review/scripts/citations.mjs:4`, `reviewer-core/docs/pipeline.md:94`
 
 ## Codebase patterns
 
@@ -28,6 +29,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-23** — Every CLAUDE.md must stay under 100 lines (the user's rule; the repo doesn't state it, and `5a759d1` shortened the root from 102 to 94 for it). After HW1 block D the root is at 99 → put new rules in a package `CLAUDE.md` (all are under 85) or a linked doc; merging or shortening existing root lines needs the user's OK, and the structure (headings, block types) must stay. Evidence: `CLAUDE.md:62-66` (Naming conventions, the last 5 lines added).
   - **2026-09-23** — superseded: "all are under 85" no longer holds — `server/CLAUDE.md` grew to 86 lines in `faa6678` (packages are now 61–86, root still 99). Evidence: `server/CLAUDE.md:86`.
   - **2026-09-28** — After `f3f0358` (onion-architecture pointers) `server/CLAUDE.md` is 92 lines and `reviewer-core/CLAUDE.md` 65; root still 99 → server has 7 lines of headroom left, so the next server rule should go in a linked doc or a skill. Evidence: `server/CLAUDE.md:92`, `reviewer-core/CLAUDE.md:65`.
+- **2026-10-03** — A skill's prompt block (`### <name>` / `When to apply: <description>` / body) is rendered twice: `renderSkill` in the engine and `renderSkillBlock` in the client's Preview tab and token counter (the client can't import reviewer-core at runtime) → change both together; the same golden string is pinned on each side. Evidence: `reviewer-core/src/prompt.ts:82`, `client/src/app/(shell)/skills/helpers.ts:15`, `client/src/app/(shell)/skills/helpers.test.ts:5`
 - **2026-10-05** — pr-self-review's version lives in two places: `metadata.version` in its `SKILL.md` and `TOOL_VERSION` in `scripts/lib.mjs`, which is stamped into runs and verdicts and is part of every reviewer cache key → bump both together, and expect a bump (even for a docs-only change) to drop every cached finding, so the next review re-runs all tasks. Evidence: `.claude/skills/pr-self-review/scripts/lib.mjs:24`, `.claude/skills/pr-self-review/scripts/select-skills.mjs:98`
 
 ## Tool & library notes
@@ -44,6 +46,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-01** — A grown onion baseline that is already committed passes every documented check: `pnpm arch` uses `--ignore-known`, `pnpm arch:stale` only proves the file equals the current violations, and `baseline-diff.mjs` compares with `HEAD` unless given a ref (the skill tells you to run it without one), while no CI job runs it → to check a branch, run `node .claude/skills/onion-architecture/scripts/baseline-diff.mjs $(git merge-base origin/main HEAD)`; making CI run it against the PR base would close the gap. Evidence: `.claude/skills/onion-architecture/scripts/baseline-diff.mjs:21`, `.claude/skills/onion-architecture/SKILL.md:205`, `server/package.json:19-21`
 - **2026-10-01** — `git show <tree>:<path>` for a path that doesn't exist there but contains glob characters (Next.js `[number]/x.ts`, `(shell)`) doesn't fail: git falls back to treating the argument as a pathspec and prints the HEAD commit, exit 0 — a citation checker read it as a 14-line file → read blobs with `git cat-file blob <tree>:<path>` (or `--batch`), which fails cleanly. Evidence: `.claude/skills/pr-self-review/scripts/lib.mjs:141`
 - **2026-10-01** — A subagent type added in `.claude/agents/` during a running Claude Code session is not usable at once: the Agent tool answered "Agent type 'pr-self-review-reviewer' not found" while a skill added in the same session was already listed; the agents appeared about half an hour later → fall back to `general-purpose` with "read `.claude/agents/<name>.md` and follow it" (the pr-self-review skill says so). Evidence: `.claude/skills/pr-self-review/SKILL.md:71`
+- **2026-10-03** — pr-self-review's D8 reads every backticked token in a spec's **Unchanged** zone as an item, and a token with no `/` or `.` matches any path segment of that name — `ConfigTab` there would also freeze `skills/[id]/…/ConfigTab/**` → list full paths in an Unchanged zone. Evidence: `.claude/skills/pr-self-review/scripts/specs.mjs:94-97`
 
 ## Recurring errors & fixes
 
@@ -118,6 +121,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-29** — Docs pass after wave 6 (poll page limit, detail refresh, skills-lock note, stale service example): +1 (Open questions nuance)
 - **2026-10-01** — PR Self Review skill plan (no code): +1 (Tool & library notes)
 - **2026-10-01** — PR Self Review skill implemented (scripts, gate, hooks, CI check, fixture run): +3 (Tool & library notes ×2, nuance)
+- **2026-10-03** — L02 Skills Lab (multi-agent build; docs + citations pass): +3 (Codebase patterns, Tool & library notes, What doesn't work)
 - **2026-10-05** — HW2 #21: push-gate hooks removed, pr-self-review 1.2.0 (manual run only): +1 (Codebase patterns)
 
 ## Open questions

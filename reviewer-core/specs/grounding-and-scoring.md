@@ -50,7 +50,7 @@ hunk (`../server/src/adapters/git/diff-parser.ts:92,98`; tests
 `groundingSummary` returns `${kept}/${kept + dropped} passed` (`src/grounding.ts:99-102`).
 The engine emits one `info` event per drop, then `Citation grounding: …` (`src/review/run.ts:256-259`).
 The server stores it on the run and in trace stats; failed or cancelled runs get
-`0/0 passed` (`../server/src/modules/reviews/run-executor.ts:267,242,316`).
+`0/0 passed` (`../server/src/modules/reviews/run-executor.ts:286,261,335`).
 Tests: `../server/test/grounding.test.ts:87-96`, `test/run.test.ts:61,69`, `../server/test/reviews.it.test.ts:213,220`.
 
 ### G5 — Grounding runs once, after reduce, on the whole diff
@@ -58,7 +58,7 @@ It runs on the reduced findings against the full `input.diff` in both modes
 (`src/review/run.ts:247-254`), so a map chunk's findings aren't limited to its slice.
 Kept findings keep the model's order (`src/grounding.ts:70-93`); `outcome.review.findings`
 is exactly the kept list (`run.ts:269`), and the server persists only that
-(`run-executor.ts:219,281`). Never add a bypass.
+(`run-executor.ts:238,300`). Never add a bypass.
 Tests: `../server/test/reviews.it.test.ts:205-207`; map-reduce keeps a finding one chunk
 reports about another chunk's file (`test/run-limits.test.ts:92-104`). Order: **untested**.
 
@@ -99,8 +99,8 @@ A fractional or out-of-range score fails validation and costs a reprompt
 After grounding, `verdictFromFindings(ground.kept, failOn ?? 'critical')` replaces the
 model's verdict (`src/review/run.ts:264,269`): no kept findings → `approve`; one at or
 above the gate (V2) → `request_changes`; otherwise `comment` (`src/output/to-review.ts:48-51`).
-The server passes the agent's `ciFailOn` (`../server/src/modules/reviews/run-executor.ts:196`)
-and stores the result (`run-executor.ts:276`). When it differs from the model's verdict
+The server passes the agent's `ciFailOn` (`../server/src/modules/reviews/run-executor.ts:213`)
+and stores the result (`run-executor.ts:295`). When it differs from the model's verdict
 — single-pass as returned, map-reduce the worst partial (`src/review/reduce.ts:33-37,61-64`) —
 the engine emits an `info` event (`run.ts:265-267`). So verdict, score, blockers and the
 GitHub event (V3) always agree; the prompt's [verdict convention](../../docs/agent-prompts/README.md#required-conventions-every-reviewer-prompt)
@@ -113,9 +113,9 @@ by grounding), `../server/test/reviews.it.test.ts:200`, `test/reduce.test.ts:68`
 least the gate's minimum (`never` ∞, `critical` 3, `warning` 2, `any` 1)
 (`src/output/to-review.ts:23-31,65-68`); `gateTriggered` is true exactly when that count
 is > 0 (`to-review.ts:37-40`). The server counts kept findings against `agent.ciFailOn`
-(`run-executor.ts:224`), DB default `critical` (`../server/src/db/schema/agents.ts:27-29`).
+(`run-executor.ts:243`), DB default `critical` (`../server/src/db/schema/agents.ts:27-29`).
 Failed and cancelled runs store `NULL` blockers
-(`../server/src/modules/reviews/domain.ts:112-113`, `../server/src/modules/reviews/repository/run.repo.ts:253`).
+(`../server/src/modules/reviews/domain.ts:121-122`, `../server/src/modules/reviews/repository/run.repo.ts:241`).
 Tests: `test/to-review.test.ts:73-91,157-165`. The server wiring: **untested**.
 
 ### V3 — The GitHub event follows the derived verdict
@@ -149,7 +149,7 @@ Tests: `test/openrouter.test.ts:43-82`. **Untested:** the `estimateCost` fallbac
 
 ### C3 — The server's estimator is the PriceBook
 For `openrouter` agents the server injects `PriceBook.estimate`
-(`../server/src/platform/container.ts:255-258`): live OpenRouter prices cached 6 h, the
+(`../server/src/platform/container.ts:261-264`): live OpenRouter prices cached 6 h, the
 static table while cold, `null` when neither knows the model
 (`../server/src/platform/price-book.ts:5,33-39`, `../server/src/adapters/llm/pricing.ts:37-41`).
 Its OpenAI/Anthropic providers use the static table only
@@ -161,8 +161,8 @@ A failed chunk is rethrown as `LlmCallError` carrying the earlier chunks' usage 
 failed call's; a call that reported none keeps the tokens but makes the cost `null`
 (`src/review/run.ts:234-239`, `src/llm/errors.ts:37-38`). The server reads it with
 `usageOf(err)` and stores those tokens and cost on the failed or cancelled run; an error
-with no usage stores 0 tokens and a `NULL` cost (`run-executor.ts:303,312-314`,
-`run.repo.ts:243-260`). The server's OpenAI/Anthropic providers attach usage to a schema
+with no usage stores 0 tokens and a `NULL` cost (`run-executor.ts:322,331-333`,
+`run.repo.ts:231-248`). The server's OpenAI/Anthropic providers attach usage to a schema
 failure too (`../server/src/adapters/llm/openai.ts:136`, `../server/src/adapters/llm/anthropic.ts:151`).
 Tests: `test/run-limits.test.ts:137-156`, `../server/test/run-lifecycle.it.test.ts:331-343`
 (failed), `:247-272` (cancelled: the aborted call's tokens), `../server/test/reviews.it.test.ts:351-359`

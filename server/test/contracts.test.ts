@@ -17,6 +17,11 @@ import {
   Repo,
   PrMeta,
   PrDetail,
+  AgentSkillsUpdate,
+  AgentVersionConfig,
+  SkillCreate,
+  SkillImportRequest,
+  SkillName,
 } from '@devdigest/shared';
 
 /**
@@ -235,5 +240,62 @@ describe('platform DTOs', () => {
     expect(PrMeta.parse({ ...pr, findings_by_severity: counts }).findings_by_severity).toEqual(counts);
     expect(PrMeta.parse({ ...pr, findings_by_severity: null }).findings_by_severity).toBeNull();
     expect(PrMeta.parse(pr).findings_by_severity).toBeUndefined();
+  });
+});
+
+describe('skills contracts (L02)', () => {
+  it('a trace without skill_blocks (written before L02) still parses; a new one carries them', () => {
+    const base = {
+      config: { agent: 'a', model: 'm' },
+      stats: { duration_ms: 1, tokens_in: 1, tokens_out: 1, findings: 0, grounding: '0/0 passed' },
+      tool_calls: [],
+      raw_output: '',
+      memory_pulled: [],
+      specs_read: [],
+      log: [],
+    };
+    expect(RunTrace.parse({ ...base, prompt_assembly: { system: 's', skills: 'x', user: 'u' } }).prompt_assembly.skill_blocks)
+      .toBeUndefined();
+    const block = { id: 's1', name: 'branch-coverage', version: 2, tokens: 40, text: '### branch-coverage' };
+    expect(
+      RunTrace.parse({ ...base, prompt_assembly: { system: 's', skill_blocks: [block], user: 'u' } }).prompt_assembly
+        .skill_blocks,
+    ).toEqual([block]);
+  });
+
+  it('skill names are kebab-case slugs; bodies must not be blank', () => {
+    expect(SkillName.safeParse('branch-coverage').success).toBe(true);
+    for (const bad of ['Branch Coverage', 'a--b', '-a', 'a_b', '']) expect(SkillName.safeParse(bad).success, bad).toBe(false);
+    expect(SkillCreate.safeParse({ name: 'a', body: '  ' }).success).toBe(false);
+    expect(SkillCreate.safeParse({ name: 'a', body: 'x', source: 'community' }).success).toBe(false);
+  });
+
+  it('agent skill links: one of the three forms, no skill twice', () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    expect(AgentSkillsUpdate.safeParse({}).success).toBe(false);
+    expect(AgentSkillsUpdate.safeParse({ links: [{ skill_id: id, enabled: false }] }).success).toBe(true);
+    expect(
+      AgentSkillsUpdate.safeParse({ links: [{ skill_id: id, enabled: true }, { skill_id: id, enabled: false }] }).success,
+    ).toBe(false);
+    expect(AgentSkillsUpdate.safeParse({ skill_ids: [id] }).success).toBe(true);
+  });
+
+  it('agent snapshots written before L02 (no skill_links) still parse', () => {
+    const cfg = {
+      provider: 'openai',
+      model: 'm',
+      system_prompt: 'p',
+      strategy: 'single-pass',
+      ci_fail_on: 'critical',
+      repo_intel: true,
+      skills: [],
+    };
+    expect(AgentVersionConfig.parse(cfg).skill_links).toBeUndefined();
+  });
+
+  it('an import upload is base64 under the size cap', () => {
+    expect(SkillImportRequest.safeParse({ filename: 'a.md', content_base64: 'IyBoaQ==' }).success).toBe(true);
+    expect(SkillImportRequest.safeParse({ filename: 'a.md', content_base64: 'not base64!' }).success).toBe(false);
+    expect(SkillImportRequest.safeParse({ filename: 'a.md', content_base64: 'A'.repeat(699_053) }).success).toBe(false);
   });
 });

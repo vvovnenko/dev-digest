@@ -28,6 +28,8 @@ npm run typecheck
 - Since wave 4 each flow runs in its own session (`--session <flow file>`), and flow 08
   writes: it runs a review on the API's fake LLM (`DEVDIGEST_FAKE_LLM=1`) and sorts
   last. This supersedes "one shared browser session" and "no flow may write" above.
+- Since L02 that writing flow is 09 (`09-review-journey`); 08 is the read-only Skills Lab flow
+  (`/skills`, the Test Quality Reviewer's Skills tab). Read "flow 08" above and below as 09.
 
 ## Naming
 

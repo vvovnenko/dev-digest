@@ -6,9 +6,9 @@ grounded structured findings). Fastify 5 + Drizzle ORM over Postgres (pgvector).
 Adapters (LLM, GitHub, git, ast-grep, …) sit behind a DI container so they can be
 swapped for mocks in tests.
 
-> This is the **starter** module set. Later course lessons add their own modules
-> (skills, intent/smart-diff, blast, brief/context/onboarding, eval/ci/hooks,
-> memory, plugins, …) — each is a self-contained `modules/<name>/` plugin plus,
+> This is the **starter** module set plus the lessons built so far (`skills`, L02).
+> Later course lessons add their own modules (intent/smart-diff, blast,
+> brief/context/onboarding, eval/ci/hooks, memory, plugins, …) — each is a self-contained `modules/<name>/` plugin plus,
 > usually, a slot it starts feeding the reviewer prompt. The DB schema already
 > contains **every** table; the unused ones simply sit empty until a lesson fills
 > them.
@@ -83,8 +83,9 @@ flowchart TB
   subgraph Review["Review & runs"]
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
-  subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id"]
+  subgraph SkillsLab["Skills Lab"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/versions<br/>/agents/:id/skills (ordered links, per-agent enabled)"]
+    skills["skills<br/>/skills · /skills/:id · /skills/:id/versions (+ /:version/restore)<br/>/skills/:id/agents · /skills/import/preview (parse only)"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -131,7 +132,8 @@ through `SecretsProvider` (`~/.devdigest/secrets.json`, mode `0600`, with
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data
-(`acme/payments-api`, PR #482, the three built-in agents).
+(`acme/payments-api`, PR #482, PR #483 for the skills experiment, the four built-in agents, and the
+Test Quality Reviewer's three linked skills — linked only when the seed creates that agent).
 
 ## Review context (non-obvious)
 
@@ -153,6 +155,12 @@ What the reviewer actually sends to the model is assembled in
   demo / test / not for production / do not flag" never descope the review — real
   defects are reported at full severity regardless. We deliberately do **not**
   keyword-scan untrusted text (a denylist only catches one phrasing).
+- **Skills are trusted instructions, not data.** A run loads its agent's enabled links to
+  enabled skills, in link order, and the engine renders each as its own `### <name>` block
+  (with a `When to apply:` line from the description) under `## Skills / rules`, unwrapped.
+  The run log says `skills: N attached (+T tokens)`; the trace keeps each block with its
+  version and token estimate ([`specs/03-skills.md`](specs/03-skills.md)). An imported skill
+  is saved only after the user confirms its preview; nothing from an archive is executed.
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.

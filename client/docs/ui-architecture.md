@@ -18,9 +18,9 @@ to `client/`; `[number]/` = `src/app/(shell)/repos/[repoId]/pulls/[number]/` (th
   the client `AppShell` once (`src/app/(shell)/layout.tsx:7-9`), so the frame, the command palette and the
   shortcut listeners survive navigation. The group adds nothing to the URL.
 - **Every `page.tsx` is a thin Server file.** It exports `generateMetadata`, whose title comes from
-  `shell.titles` (`messages/en/shell.json:46-56`; e.g. `src/app/(shell)/repos/[repoId]/pulls/[number]/page.tsx:7-10`
+  `shell.titles` (`messages/en/shell.json:46-58`; e.g. `src/app/(shell)/repos/[repoId]/pulls/[number]/page.tsx:7-10`
   → "PR #482 · DevDigest"), and renders one client view: `HomeView`, `AgentsListView`, `AgentEditorView`,
-  `SettingsView`, `PullsListView`, `PrDetailView`, `AddRepoView` (each `<Name>View.tsx` starts with
+  `SkillsListView`, `SkillEditorView`, `SettingsView`, `PullsListView`, `PrDetailView`, `AddRepoView` (each `<Name>View.tsx` starts with
   `"use client"`).
 - **Nothing fetches on the server.** The only `fetch` is `src/lib/api.ts:24`; there is no `loading.tsx`.
   Errors: a page that throws renders `src/app/(shell)/error.tsx:10-16` inside the shell (retry = `reset`);
@@ -37,7 +37,7 @@ hydration. The whole catalog, including namespaces no screen reads yet, is seria
 ToastProvider → RepoProvider`. The `QueryClient` is created once, in `useState` (`providers.tsx:22`), with
 `retry: 1`, `staleTime: 30 s`, `refetchOnWindowFocus: false` (`providers.tsx:26-30`). Overrides:
 `useRunTrace` never retries (`src/lib/hooks/trace.ts:18`), `useProviderModels` stays fresh 5 min
-(`agents.ts:68`), `usePulls` refetches on focus (`core.ts:118`).
+(`agents.ts:79`), `usePulls` refetches on focus (`core.ts:118`).
 
 - A failed **query** toasts only on a network failure (status 0) or ≥ 500; a non-`ApiError` counts as 500
   (`providers.tsx:35-40`). A 4xx stays silent so the page can show it inline. A failed **mutation**
@@ -61,10 +61,12 @@ ToastProvider → RepoProvider`. The `QueryClient` is created once, in `useState
 
 ## Hooks, query keys, invalidation
 
-All hooks live in `src/lib/hooks/*.ts`, re-exported by `src/lib/hooks/index.ts:4-8`. Pull-request, run and
-PR-list keys come from the factories in `src/lib/hooks/keys.ts:6-23`: a key starts with the resource and
-holds every `queryFn` input, so invalidating a prefix refreshes everything under it (`prKeys.all(prId)` =
-the PR's detail, reviews, runs and comments). The other keys are inline arrays. `["context", repoId]`
+All hooks live in `src/lib/hooks/*.ts`, re-exported by `src/lib/hooks/index.ts:4-9`. Pull-request, run,
+PR-list and skill keys come from the factories in `src/lib/hooks/keys.ts:7-37`: a key starts with the resource
+and holds every `queryFn` input, so invalidating a prefix refreshes everything under it (`prKeys.all(prId)` =
+the PR's detail, reviews, runs and comments; `skillKeys.all` = every skill list, detail, version history and
+usage list). An agent's skill links sit under the agent's own `["agent", id]` prefix
+(`agentSkillKeys.links`). The other keys are inline arrays. `["context", repoId]`
 (`core.ts:168-182`) and `["repo-intel-state"]` have hooks but no screen yet.
 
 | Key | Hook → endpoint | Refetch | Written by |
@@ -74,9 +76,14 @@ the PR's detail, reviews, runs and comments). The other keys are inline arrays. 
 | `["repos"]` | `useRepos` → `GET /repos` (`core.ts:69-74`) | — | add / refresh / delete repo (`core.ts:80,89,99`) |
 | `repoKeys.pulls(repoId)` | `usePulls` → `GET /repos/:id/pulls` (`core.ts:112-120`) | every 60 s only with `poll: true`; on focus | `useRefreshRepo` (`core.ts:90`), `useSyncPulls` after a poll (`core.ts:133`); a finished run, all lists (`reviews.ts:56`) |
 | `prKeys.detail(prId)` | `usePullDetail` → `GET /pulls/:id` (`core.ts:159-165`) | — | `prKeys.all` invalidations |
-| `["agents"]` | `useAgents` → `GET /agents` (`agents.ts:8-13`) | — | create / update / delete (`agents.ts:30,45,56`) |
-| `["agent", id]` | `useAgent` → `GET /agents/:id` (`agents.ts:15-21`) | — | update sets data, delete removes it (`agents.ts:46,57`) |
-| `["provider-models", p]` | `useProviderModels` → `GET /providers/:p/models` (`agents.ts:63-70`) | — | `useTestConnection` when `ok` (`core.ts:52`) |
+| `["agents"]` | `useAgents` → `GET /agents` (`agents.ts:19-24`) | — | create / update / delete (`agents.ts:41,56,67`); a skill-links save or a skill delete (`agents.ts:120`, `skills.ts:86`) |
+| `["agent", id]` | `useAgent` → `GET /agents/:id` (`agents.ts:26-32`) | — | update sets data, delete removes it (`agents.ts:57,68`); a skill-links save invalidates it (`agents.ts:121`) |
+| `agentSkillKeys.links(id)` | `useAgentSkills` → `GET /agents/:id/skills` (`agents.ts:84-90`) | — | `useSetAgentSkills` → `POST /agents/:id/skills {links}`: optimistic, rolled back on error, one agent's saves run in order (`scope`) (`agents.ts:97-125`) |
+| `["provider-models", p]` | `useProviderModels` → `GET /providers/:p/models` (`agents.ts:74-81`) | — | `useTestConnection` when `ok` (`core.ts:52`) |
+| `skillKeys.list` | `useSkills` → `GET /skills` (`skills.ts:17-22`) | — | every skill mutation invalidates `skillKeys.all` (`skills.ts:56,73,85,105`); a skill-links save (`agents.ts:122`) |
+| `skillKeys.detail(id)` | `useSkill` → `GET /skills/:id` (`skills.ts:24-30`) | — | create / update / restore set data, delete removes it (`skills.ts:55,72,104,84`) |
+| `skillKeys.versions(id)` | `useSkillVersions` → `GET /skills/:id/versions` (`skills.ts:33-39`) | — | `skillKeys.all` invalidations |
+| `skillKeys.agents(id)` | `useSkillAgents` → `GET /skills/:id/agents` (`skills.ts:42-48`) | — | `skillKeys.all` invalidations |
 | `prKeys.runs(prId)` | `usePrRuns` → `GET /pulls/:id/runs` (`reviews.ts:27-35`) | every 4 s while a run is `running` | run review, delete run and a finished run via `prKeys.all` (`reviews.ts:133,67,54`); cancel (`reviews.ts:76`) |
 | `prKeys.reviews(prId)` | `usePrReviews` → `GET /pulls/:id/reviews` (`reviews.ts:38-44`) | — | finding action, optimistic (`reviews.ts:168-183`); delete review (`reviews.ts:85`); `prKeys.all` invalidations |
 | `prKeys.comments(prId)` | `usePrComments` → `GET /pulls/:id/comments` (`reviews.ts:91-97`) | — | `useCreatePrComment` (`reviews.ts:113`) |
@@ -135,7 +142,7 @@ the PR's detail, reviews, runs and comments). The other keys are inline arrays. 
 - The time zone is fixed on the server (`request.ts:30-32`) and passed to the client provider
   (`layout.tsx:20,32`), so dates format the same on both sides. Components print dates only through
   `src/lib/format.ts` (`useDateFormat`, `DATE_TIME`, `TIME`), not `toLocaleString()`.
-- Client components read `prReview`, `runs`, `agents`, `settings`, `shell` and `common` with
+- Client components read `prReview`, `runs`, `agents`, `skills`, `settings`, `shell` and `common` with
   `useTranslations`; page titles use `getTranslations("shell.titles")` on the server. Counts use ICU plurals
   (`{count, plural, one {# finding} other {# findings}}`).
 - **Hardcoded English that remains:** `global-error.tsx` (no providers there), the Timeline's agent-name
@@ -143,8 +150,9 @@ the PR's detail, reviews, runs and comments). The other keys are inline arrays. 
   (`src/lib/providers.tsx:18`). e2e flows assert some message text, so change a string only with its flow
   ([`../specs/pages.md`](../specs/pages.md#copy-that-e2e-flows-assert)).
 - **Some vendored copy is English too:** nav labels, settings sections and the shortcut list
-  (`src/vendor/ui/nav.ts:25-26,39-42,51-59`). The shortcut list still says "Dismiss finding" for `d`
-  (`nav.ts:58`), while the card button says "Reject".
+  (`src/vendor/ui/nav.ts:25,31-32,45-48,57-66`). The shortcut list still says "Dismiss finding" for `d`
+  (`nav.ts:65`), while the card button says "Reject". `nav.ts` changed once on purpose, in L02, to add the
+  SKILLS LAB section (Skills, then Agents) and the `g s` row; it stays vendored otherwise.
 
 ## Styling and theme
 
@@ -182,8 +190,8 @@ the PR's detail, reviews, runs and comments). The other keys are inline arrays. 
   `localStorage["dd-repo"]`, then the first repo (`src/lib/repo-context.tsx:47-48`). `useRepoNotFound`
   turns true only after repos have loaded and the id matches none of them (`repo-context.tsx:69-72`).
 - **Shortcuts.** Cmd/Ctrl+K opens the palette and `?` opens help; both ignore text inputs
-  (`useGlobalShortcuts.ts:29-38`). `g` then `p` / `a` / `,` navigates if the second key comes within
-  1200 ms (`useGlobalShortcuts.ts:39-52`, `constants.ts:4`, `src/vendor/ui/nav.ts:25-26,36`); the handler
+  (`useGlobalShortcuts.ts:29-38`). `g` then `p` / `s` / `a` / `,` navigates if the second key comes within
+  1200 ms (`useGlobalShortcuts.ts:39-52`, `constants.ts:4`, `src/vendor/ui/nav.ts:25,31-32,42`); the handler
   listens in the capture phase and stops the second key, so `g a` never reaches a page shortcut
   (`useGlobalShortcuts.ts:45-48,54`).
 - **Finding shortcuts** `j`/`k`/`a`/`d` act only on a plain key press — no Cmd/Ctrl/Alt, not in a text field,

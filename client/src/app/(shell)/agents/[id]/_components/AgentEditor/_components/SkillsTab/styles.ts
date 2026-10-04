@@ -1,0 +1,47 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for the agent's Skills tab. */
+export const s = {
+  wrap: { maxWidth: 1060 } satisfies CSSProperties,
+  header: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } satisfies CSSProperties,
+  h2: { fontSize: 18, fontWeight: 700 } satisfies CSSProperties,
+  filter: { marginLeft: "auto", width: 300 } satisfies CSSProperties,
+  hint: { fontSize: 14, color: "var(--text-secondary)", marginBottom: 18 } satisfies CSSProperties,
+  list: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  row: (enabled: boolean, over: boolean, lifted: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: `1px solid ${over || lifted ? "var(--accent)" : "var(--border)"}`,
+    background: enabled ? "var(--bg-elevated)" : "var(--bg-surface)",
+    boxShadow: lifted ? "0 0 0 2px var(--accent-bg)" : undefined,
+  }),
+  handle: (active: boolean): CSSProperties => ({
+    display: "grid",
+    placeItems: "center",
+    padding: 4,
+    border: "none",
+    borderRadius: 5,
+    background: "transparent",
+    color: "var(--text-muted)",
+    cursor: active ? "grab" : "not-allowed",
+    opacity: active ? 1 : 0.4,
+  }),
+  name: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } satisfies CSSProperties,
+  rowEnd: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
+  open: { fontSize: 12, color: "var(--text-muted)", textDecoration: "none" } satisfies CSSProperties,
+  loading: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+    border: 0,
+  } satisfies CSSProperties,
+} as const;

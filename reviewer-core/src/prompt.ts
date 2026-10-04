@@ -1,11 +1,13 @@
-import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
+import type { ChatMessage, PromptAssembly, PromptSkillBlock } from '@devdigest/shared';
 
 /**
  * Prompt assembly + prompt-injection hardening.
  *
- * ALL external content (diff, PR body, code, community skills, specs) is
- * UNTRUSTED DATA, never instructions. We wrap it in clearly-delimited blocks
- * and add a system rule that content inside delimiters is data only.
+ * ALL external content (diff, PR body, code, specs) is UNTRUSTED DATA, never
+ * instructions. We wrap it in clearly-delimited blocks and add a system rule that
+ * content inside delimiters is data only. Skills are the exception: they are
+ * instructions the workspace owner wrote or confirmed (an import is previewed and
+ * saved by hand), so they go in unwrapped.
  */
 
 // The ONE shared, trusted defense. assemblePrompt appends it to every agent's
@@ -44,11 +46,64 @@ const MAX_PR_DESCRIPTION_CHARS = 4000;
 /** GitHub caps titles at 256 chars; anything longer didn't come from GitHub. */
 const MAX_PR_TITLE_CHARS = 256;
 
+/**
+ * One enabled skill, already resolved by the caller (DB in the studio, fs in a
+ * runner). Trusted text: the user wrote it or confirmed an import's preview.
+ */
+export interface PromptSkill {
+  /** Stable id echoed into the trace (a DB uuid, or a slug in a runner). */
+  id: string;
+  /** Kebab-case name — the block's heading. */
+  name: string;
+  /** The skill's "interface": rendered as the block's `When to apply:` line. */
+  description: string;
+  /** Markdown instructions. */
+  body: string;
+  /** Skill version, echoed into the trace for reproducibility. */
+  version?: number | undefined;
+}
+
+/** Rough token count of a prompt fragment: ceil(chars / 4) — the server's `approxTokens`. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * One skill as the model sees it inside `## Skills / rules`:
+ *
+ *     ### <name>
+ *     When to apply: <description, whitespace collapsed>   ← omitted when blank
+ *
+ *     <body, trimmed>
+ *
+ * The client's Preview tab renders the same format (a golden-string test on each
+ * side keeps them in step).
+ */
+export function renderSkill(skill: PromptSkill): string {
+  const description = skill.description.replace(/\s+/g, ' ').trim();
+  const head = description ? `### ${skill.name}\nWhen to apply: ${description}` : `### ${skill.name}`;
+  return `${head}\n\n${skill.body.trim()}`;
+}
+
+/** Render every skill, in order, with its token estimate (the trace's `skill_blocks`). */
+export function skillBlocks(skills: readonly PromptSkill[]): PromptSkillBlock[] {
+  return skills.map((skill) => {
+    const text = renderSkill(skill);
+    return {
+      id: skill.id,
+      name: skill.name,
+      version: skill.version ?? null,
+      tokens: estimateTokens(text),
+      text,
+    };
+  });
+}
+
 export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
-  /** Linked skill bodies (trusted-ish; community skills should be sanitized upstream). */
-  skills?: string[] | undefined;
+  /** Enabled skills in prompt order (trusted; see PromptSkill). */
+  skills?: PromptSkill[] | undefined;
   /** Relevant memory items (trusted, curated). */
   memory?: string[] | undefined;
   /** Project-context spec chunks (untrusted content). */
@@ -99,8 +154,9 @@ export interface AssembledPrompt {
 export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   const system = `${parts.system}\n\n${INJECTION_GUARD}`;
 
+  const blocks = parts.skills && parts.skills.length > 0 ? skillBlocks(parts.skills) : [];
   const skillsBlock =
-    parts.skills && parts.skills.length > 0 ? parts.skills.join('\n\n') : undefined;
+    blocks.length > 0 ? blocks.map((b) => b.text).join('\n\n') : undefined;
   const memoryBlock =
     parts.memory && parts.memory.length > 0
       ? parts.memory.map((m) => `- ${m}`).join('\n')
@@ -147,6 +203,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   const assembly: PromptAssembly = {
     system,
     skills: skillsBlock ?? null,
+    skill_blocks: blocks.length > 0 ? blocks : null,
     memory: memoryBlock ?? null,
     specs: specsBlock ?? null,
     callers: parts.callers ?? null,

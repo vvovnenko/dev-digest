@@ -2,28 +2,29 @@
 
 `reviewPullRequest` (`src/review/run.ts:161-280`) is the only entry point: diff +
 agent inputs + an injected `LLMProvider` in, a grounded `Review` and run telemetry
-out. Diagram and exports: [`../README.md`](../README.md) (`src/index.ts:40-64`).
+out. Diagram and exports: [`../README.md`](../README.md) (`src/index.ts:44-68`).
 Rules that must stay true:
 [`../specs/grounding-and-scoring.md`](../specs/grounding-and-scoring.md). Cited paths are relative to `reviewer-core/`.
 
 ## Inputs and outputs
 
-| Input | Engine default | What the server passes (`../server/src/modules/reviews/run-executor.ts:187-214`) |
+| Input | Engine default | What the server passes (`../server/src/modules/reviews/run-executor.ts:204-233`) |
 | ----- | -------------- | ---- |
-| `systemPrompt`, `model`, `diff`, `llm` | required (`run.ts:62-70`) | the agent row; the PR diff from `deps.diffs` — `git diff base...head`, else the stored `pr_files` patches (`run-executor.ts:90`, `../server/src/adapters/git/pr-diff.ts:19-30`); `deps.llm(agent.provider)`, the container's `llm` |
+| `systemPrompt`, `model`, `diff`, `llm` | required (`run.ts:62-70`) | the agent row; the PR diff from `deps.diffs` — `git diff base...head`, else the stored `pr_files` patches (`run-executor.ts:93`, `../server/src/adapters/git/pr-diff.ts:19-30`); `deps.llm(agent.provider)`, the container's `llm` |
 | `strategy` | `'auto'` (`run.ts:167`) | `agent.strategy`. The DB default is `single-pass` (`../server/src/db/schema/agents.ts:22-24`), so `auto` runs only when set in the Agent editor |
-| `failOn` | `'critical'` (`run.ts:264`) | `agent.ciFailOn` (`run-executor.ts:196`) — the gate that turns the kept findings into the verdict |
+| `failOn` | `'critical'` (`run.ts:264`) | `agent.ciFailOn` (`run-executor.ts:213`) — the gate that turns the kept findings into the verdict |
 | `maxRetries` | 2 (`run.ts:43-44,163`) | not passed |
 | `mapThresholdLines` | 400 changed lines (`run.ts:41-42,162`) | not passed |
 | `maxTokens` | 8192 output tokens per call (`run.ts:45-46,230`) | not passed |
 | `maxDiffChars` | 2,000,000 characters (`run.ts:47-48,164-165`) | not passed |
 | `singlePassMaxChars` | 400,000 characters (`run.ts:49-50,170`) | not passed |
-| `signal` | none | the run's `AbortSignal` from the run bus (`deps.runs.track`), aborted by a cancel or a shutdown (`run-executor.ts:146,213`) |
-| `task` | none | `taskLine(pull)` + a repo-intel rank note (`run-executor.ts:181`) |
-| `prDescription`, `repoMap`, `callers` | omitted | the PR body; repo-intel digests when the agent has repo intel on (`run-executor.ts:165-179,199-204`) |
-| `skills`, `memory`, `specs` | omitted | never passed today |
-| `sessionId` | none | `owner/name#number:agent` (`run-executor.ts:208`) |
-| `onEvent`, `checkCancelled` | none | the run log / SSE bridge; a check that throws `RunCancelledError` once the run is cancelled or the API is shutting down (`run-executor.ts:209-212`) |
+| `signal` | none | the run's `AbortSignal` from the run bus (`deps.runs.track`), aborted by a cancel or a shutdown (`run-executor.ts:149,232`) |
+| `task` | none | `taskLine(pull)` + a repo-intel rank note (`run-executor.ts:198`) |
+| `prDescription`, `repoMap`, `callers` | omitted | the PR body; repo-intel digests when the agent has repo intel on (`run-executor.ts:182-196,216-218,223`) |
+| `skills` | omitted | the agent's enabled links to enabled skills, in link order, as `PromptSkill[]`, loaded in a `Loading skills` step that logs `skills: N attached (+T tokens)`; left out when none is enabled (`run-executor.ts:166-176,219-220`) |
+| `memory`, `specs` | omitted | never passed today |
+| `sessionId` | none | `owner/name#number:agent` (`run-executor.ts:227`) |
+| `onEvent`, `checkCancelled` | none | the run log / SSE bridge; a check that throws `RunCancelledError` once the run is cancelled or the API is shutting down (`run-executor.ts:228-231`) |
 
 `ReviewOutcome` (`run.ts:125-143`): the grounded `review`, `grounding`, `dropped`
 (with reasons), `mode`, the trace's `assembly` and chunk labels, summed tokens and
@@ -77,34 +78,37 @@ trace shows a whole-diff prompt that was never sent.
 
 ## 3. Prompt assembly
 
-`assemblePrompt` (`src/prompt.ts:99-159`) builds two messages: the agent prompt plus
-`INJECTION_GUARD` as system (`prompt.ts:100`), and the user sections in the order
+`assemblePrompt` (`src/prompt.ts:154-216`) builds two messages: the agent prompt plus
+`INJECTION_GUARD` as system (`prompt.ts:155`), and the user sections in the order
 [agent-prompts](../../docs/agent-prompts/README.md#how-a-prompt-is-assembled) shows.
 
-- The task line is pushed **unwrapped** (`prompt.ts:119`), so it must hold no PR text: the
-  PR's title and author arrive as `pr` and get their own `pr-meta` block (`prompt.ts:120-123`).
-  Skills (joined bodies) and memory (`- ` bullets) are unwrapped too (`prompt.ts:102-107`).
+- The task line is pushed **unwrapped** (`prompt.ts:175`), so it must hold no PR text: the
+  PR's title and author arrive as `pr` and get their own `pr-meta` block (`prompt.ts:176-179`).
+  Skills and memory (`- ` bullets) are unwrapped too (`prompt.ts:157-163`): skills are
+  instructions the user wrote or confirmed, each rendered by `renderSkill` as `### <name>`,
+  `When to apply: <description>` and the body, in the agent's order (`prompt.ts:82-86`).
   The PR title/author, PR description, repo skeleton, each spec chunk (`spec-<i>`), callers
-  and the diff go through `wrapUntrusted` (`prompt.ts:108-111,122,125,130,135,138`).
+  and the diff go through `wrapUntrusted` (`prompt.ts:164-167,178,181,186,191,194`).
 - `wrapUntrusted` neutralises every opening or closing `untrusted` tag in the content,
   whatever its case, spacing or attributes (`<` becomes `&lt;`), so content can neither
-  close its own block nor fake a new one (`prompt.ts:31-39`).
+  close its own block nor fake a new one (`prompt.ts:33-41`).
 - Empty slots are left out: the PR description, repo map and callers when blank
-  after trim; skills, memory and specs when the array is empty (`prompt.ts:102-137`).
-  The diff section is always last (`prompt.ts:138`).
-- The PR description is cut to 4000 characters and the title to 256 (`prompt.ts:42,45,113-116,121`).
+  after trim; skills, memory and specs when the array is empty (`prompt.ts:157-193`).
+  The diff section is always last (`prompt.ts:194`).
+- The PR description is cut to 4000 characters and the title to 256 (`prompt.ts:44,47,169-172,177`).
 - The trace record stores `callers` and `repo_map` as passed, unwrapped. `specs` and
-  `user` are stored wrapped (`prompt.ts:147-156`).
+  `user` are stored wrapped (`prompt.ts:203-213`). `skill_blocks` holds each skill's rendered
+  text, version and a token estimate, `ceil(chars / 4)` (`prompt.ts:66-69,89-100`).
 
-The guard says the PR title sits inside `<untrusted>` (`prompt.ts:17-18`), and it does: the
-server passes title and author as `pr` (`../server/src/modules/reviews/run-executor.ts:206`),
+The guard says the PR title sits inside `<untrusted>` (`prompt.ts:19-20`), and it does: the
+server passes title and author as `pr` (`../server/src/modules/reviews/run-executor.ts:225`),
 and its task line carries only the PR number (`../server/src/modules/reviews/helpers.ts:76-86`).
 
 ## 4. Provider call
 
 The server builds `OpenRouterProvider` (`src/llm/openrouter.ts`) for agents on
-`openrouter` — every seeded agent (`../server/src/db/seed.ts:12-13`) — and its own
-OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:229-263`).
+`openrouter` — every seeded agent (`../server/src/db/seed.ts:14-15`) — and its own
+OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:235-269`).
 `OpenRouterProvider`:
 
 - It is the OpenAI SDK pointed at `https://openrouter.ai/api/v1`, with a 90 s timeout
@@ -143,7 +147,7 @@ attempts (`openrouter.ts:83`), and each attempt gets up to 3 HTTP tries from the
   (`structured.ts:66-83`, `openrouter.ts:151-152`).
 - After the last attempt the provider throws (`openrouter.ts:154-157`). The error leaves
   `reviewPullRequest`, and the server marks the run failed and stores the usage it
-  carries (`run-executor.ts:293-321`).
+  carries (`run-executor.ts:312-340`).
 
 Tokens and `usage.cost` add up across attempts (`openrouter.ts:113-117`).
 
@@ -172,7 +176,7 @@ verdict (`run.ts:261-269`). The exact rules are in [the contract](../specs/groun
 `src/output/to-review.ts`: `toReviewPayload` (body, inline comments anchored to a
 real diff line, an event mapped from the derived verdict), `verdictFromFindings`,
 `gateTriggered`, `countBlockers`. Besides `reviewPullRequest`, the server imports only
-`countBlockers` and `usageOf` (`../server/src/modules/reviews/run-executor.ts:2,224,303`);
+`countBlockers`, `skillBlocks` and `usageOf` (`../server/src/modules/reviews/run-executor.ts:2,171,243,322`);
 the rest is for the CI runner, back in L06 (`README.md:32-35`).
 
 ## Testing
@@ -186,7 +190,7 @@ the rest is for the CI runner, back in L06 (`README.md:32-35`).
   drives `OpenRouterProvider` against a fake `fetch`: the billed cost, the `length`
   cut-off, the reprompt loop summing its attempts, an aborted signal; `:85-94`, a
   `/models` that never answers giving up after the timeout.
-  `parseWithRepair` / `extractJson` are unit-tested in `../server/test/prompt-structured.test.ts:39-55`.
+  `parseWithRepair` / `extractJson` are unit-tested in `../server/test/prompt-structured.test.ts:40-56`.
 - The engine runs with a stub provider on a two-file diff in `test/run-limits.test.ts`:
   map-reduce slices and de-duplication (`test/run-limits.test.ts:91-119`), the derived
   verdict (`test/run-limits.test.ts:121-134`), what a failed run spent
