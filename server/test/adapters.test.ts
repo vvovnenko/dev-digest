@@ -103,4 +103,9 @@ describe('pricing / cost discipline', () => {
     expect(estimateCost('gpt-4o-mini', 1_000_000, 0)).toBeCloseTo(0.15, 5);
     expect(estimateCost('some-future-model', 1000, 1000)).toBeNull();
   });
+
+  it('prices current Claude models, a dated snapshot as its alias', () => {
+    expect(estimateCost('claude-opus-5-5', 1_000_000, 1_000_000)).toBeCloseTo(24, 9); // 4 + 20
+    expect(estimateCost('claude-haiku-4-5-20251001', 1_000_000, 0)).toBeCloseTo(1, 9);
+  });
 });

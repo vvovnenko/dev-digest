@@ -86,8 +86,9 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
 | `embedder()` | async; `ConfigError` unless `EMBEDDINGS_ENABLED=true` (`:269-282`) | `embedder` |
 
 - `llm('openai' | 'anthropic')` builds `src/adapters/llm/openai.ts` / `anthropic.ts`.
-  `llm('openrouter')` builds reviewer-core's `OpenRouterProvider` with
-  `priceBook.estimate` injected as its cost fallback (`src/platform/container.ts:255-264`, in `buildLlm`, `:245-269`).
+  `llm('openrouter')` builds reviewer-core's `OpenRouterProvider`. Each gets
+  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:255,263,268`, in `buildLlm`, `:247-269`);
+  OpenAI/Anthropic return tokens only, so their models are priced under the catalog alias (`src/platform/price-book.ts:17-22`).
   The container imports it from the `@devdigest/reviewer-core/llm/openrouter.js` subpath
   (`:26`): the package index does not export it, and `pnpm arch` allows that import here only.
 - With `DEVDIGEST_FAKE_LLM=1` (`config.fakeLlm`) every agent gets `FakeReviewLlm` instead
@@ -139,7 +140,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   `appWith` also overrides `secrets` and `openrouter` (`test/reviews.it.test.ts:126-130`),
   because "run all enabled agents reviews with each enabled agent"
   (`test/reviews.it.test.ts:602-611`) runs the seeded OpenRouter agents
-  (`src/db/seed.ts:14`, `src/platform/container.ts:261-264`).
+  (`src/db/seed.ts:14`, `src/platform/container.ts:263`).
 
 ## Modules and request context
 
@@ -210,7 +211,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   check passes; a failed check keeps the old key and says `— the key was not saved`
   (`src/modules/settings/service.ts:44-62`; tests `test/settings-service.test.ts:48-72`).
 - A missing key makes the container getters throw `ConfigError`, which is a 500 `config_error`
-  (`src/platform/container.ts:229`, `:252`, `:260`, `:267`). Inside a review it fails the run instead.
+  (`src/platform/container.ts:231`, `:254`, `:262`, `:266`). Inside a review it fails the run instead.
 
 ## JobRunner (`src/platform/jobs.ts`)
 

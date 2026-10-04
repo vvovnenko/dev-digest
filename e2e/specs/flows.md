@@ -157,7 +157,7 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
 
 The one flow that writes, so it sorts last. It needs the API's fake LLM
 (`DEVDIGEST_FAKE_LLM=1`, `../scripts/e2e.sh:47-49`, `../.github/workflows/e2e-web.yml:7-9`):
-`../server/src/platform/container.ts:240` hands every agent a `FakeReviewLlm`, which answers
+`../server/src/platform/container.ts:242` hands every agent a `FakeReviewLlm`, which answers
 with one WARNING titled "Fake finding on the first added line" on the first added line of
 the prompt's diff (`../server/src/adapters/llm/fake.ts:17-18,21,45`). With no clone the diff
 comes from the stored patches (`../server/src/adapters/git/pr-diff.ts:19-29`), so the seed's one

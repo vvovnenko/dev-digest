@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelInfo } from '@devdigest/shared';
-import { PriceBook } from '../src/platform/price-book.js';
+import { PriceBook, catalogIds } from '../src/platform/price-book.js';
 
 const MODELS: ModelInfo[] = [
   {
@@ -42,5 +42,51 @@ describe('PriceBook (live OpenRouter pricing for cost attribution)', () => {
     );
     await pb.refresh(); // swallows the error
     expect(pb.estimate('deepseek/deepseek-v4-flash', 0, 0)).toBe(0.5);
+  });
+});
+
+describe('PriceBook.estimatorFor (direct providers priced under their catalog alias)', () => {
+  const LIVE: ModelInfo[] = [
+    ...MODELS,
+    { id: 'anthropic/claude-opus-5.5', provider: 'openrouter', pricing: { promptPerM: 4, completionPerM: 20 } },
+    { id: 'anthropic/claude-haiku-4.5', provider: 'openrouter', pricing: { promptPerM: 1, completionPerM: 5 } },
+    { id: 'openai/gpt-5.5', provider: 'openrouter', pricing: { promptPerM: 5, completionPerM: 30 } },
+  ];
+  const warm = async (fallback: (m: string) => number | null = () => null) => {
+    const pb = new PriceBook(async () => LIVE, fallback);
+    await pb.refresh();
+    return pb;
+  };
+
+  it('maps Anthropic ids to the catalog: dotted version, dated snapshot dropped', () => {
+    expect(catalogIds('anthropic', 'claude-opus-5-5')).toEqual(['claude-opus-5-5', 'anthropic/claude-opus-5.5']);
+    expect(catalogIds('anthropic', 'claude-haiku-4-5-20251001')).toEqual([
+      'claude-haiku-4-5-20251001',
+      'anthropic/claude-haiku-4.5',
+    ]);
+    expect(catalogIds('anthropic', 'claude-opus-5')).toEqual(['claude-opus-5', 'anthropic/claude-opus-5']);
+    expect(catalogIds('openai', 'gpt-5.5')).toEqual(['gpt-5.5', 'openai/gpt-5.5']);
+    expect(catalogIds('openrouter', 'claude-opus-5-5')).toEqual(['claude-opus-5-5']);
+  });
+
+  it('prices an Anthropic or OpenAI model from its live catalog entry', async () => {
+    const pb = await warm();
+    expect(pb.estimatorFor('anthropic')('claude-opus-5-5', 1_000_000, 1_000_000)).toBeCloseTo(24, 9);
+    expect(pb.estimatorFor('anthropic')('claude-haiku-4-5-20251001', 1_000_000, 1_000_000)).toBeCloseTo(6, 9);
+    expect(pb.estimatorFor('openai')('gpt-5.5', 1_000_000, 1_000_000)).toBeCloseTo(35, 9);
+  });
+
+  it('falls back to the static table for a model the catalog lacks, with its own id', async () => {
+    const asked: string[] = [];
+    const pb = await warm((m) => (asked.push(m), m === 'claude-sonnet-4-6' ? 0.5 : null));
+    expect(pb.estimatorFor('anthropic')('claude-sonnet-4-6', 1, 1)).toBe(0.5);
+    expect(pb.estimatorFor('anthropic')('claude-unknown-9', 1, 1)).toBeNull();
+    expect(asked).toEqual(['claude-sonnet-4-6', 'claude-unknown-9']);
+  });
+
+  it('never aliases an OpenRouter model id', async () => {
+    const pb = await warm(() => null);
+    expect(pb.estimatorFor('openrouter')('claude-opus-5-5', 1, 1)).toBeNull();
+    expect(pb.estimate('claude-opus-5-5', 1, 1)).toBeNull();
   });
 });

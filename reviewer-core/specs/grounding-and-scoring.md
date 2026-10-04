@@ -148,13 +148,17 @@ the token limit, a schema that never validates — throws `LlmCallError` carryin
 Tests: `test/openrouter.test.ts:43-82`. **Untested:** the `estimateCost` fallback.
 
 ### C3 — The server's estimator is the PriceBook
-For `openrouter` agents the server injects `PriceBook.estimate`
-(`../server/src/platform/container.ts:261-264`): live OpenRouter prices cached 6 h, the
+Every provider gets `PriceBook.estimatorFor(<its id>)`
+(`../server/src/platform/container.ts:255,263,268`): live OpenRouter prices cached 6 h, the
 static table while cold, `null` when neither knows the model
-(`../server/src/platform/price-book.ts:5,33-39`, `../server/src/adapters/llm/pricing.ts:37-41`).
-Its OpenAI/Anthropic providers use the static table only
-(`../server/src/adapters/llm/openai.ts:123`, `../server/src/adapters/llm/anthropic.ts:136`).
-Tests: `../server/test/price-book.test.ts:15-45`, `../server/test/adapters.test.ts:102-105`.
+(`../server/src/platform/price-book.ts:7,64-73`, `../server/src/adapters/llm/pricing.ts:54-58`).
+The OpenAI and Anthropic APIs return tokens, never USD, so their providers price every call
+with it, and their models are looked up under the catalog alias (`claude-opus-5-5` →
+`anthropic/claude-opus-5.5`, `gpt-5.5` → `openai/gpt-5.5`; `price-book.ts:17-22`). Without an
+injected estimator the static table prices them (`../server/src/adapters/llm/openai.ts:56,126`,
+`../server/src/adapters/llm/anthropic.ts:93,220`).
+Tests: `../server/test/price-book.test.ts:15-92`, `../server/test/adapters.test.ts:102-110`,
+`../server/test/anthropic-provider.test.ts:198-242`.
 
 ### C4 — Failed and cancelled runs store what their calls spent
 A failed chunk is rethrown as `LlmCallError` carrying the earlier chunks' usage plus the
@@ -163,7 +167,7 @@ failed call's; a call that reported none keeps the tokens but makes the cost `nu
 `usageOf(err)` and stores those tokens and cost on the failed or cancelled run; an error
 with no usage stores 0 tokens and a `NULL` cost (`run-executor.ts:322,331-333`,
 `run.repo.ts:231-248`). The server's OpenAI/Anthropic providers attach usage to a schema
-failure too (`../server/src/adapters/llm/openai.ts:136`, `../server/src/adapters/llm/anthropic.ts:151`).
+failure too (`../server/src/adapters/llm/openai.ts:139`, `../server/src/adapters/llm/anthropic.ts:239`).
 Tests: `test/run-limits.test.ts:137-156`, `../server/test/run-lifecycle.it.test.ts:331-343`
 (failed), `:247-272` (cancelled: the aborted call's tokens), `../server/test/reviews.it.test.ts:351-359`
 (no usage → `NULL`), `:286-315` (a failed run adds nothing to the PR's cost).

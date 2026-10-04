@@ -207,7 +207,9 @@ export class Container {
    * Live OpenRouter pricing for cost attribution. The lister builds a bare
    * OpenRouter provider just for `/models` (no estimator needed) and degrades to
    * `[]` when no key is configured; the static `estimateCost` table is the
-   * fallback for OpenAI/Anthropic and a cold/cold-failed cache.
+   * fallback for a model the catalog doesn't price and a cold/cold-failed cache.
+   * Every LLM adapter gets `estimatorFor(its id)`, OpenAI/Anthropic models priced
+   * under their catalog alias.
    */
   get priceBook(): PriceBook {
     this._priceBook ??= new PriceBook(async () => {
@@ -250,7 +252,7 @@ export class Container {
     if (id === 'openai') {
       const key = candidateKey ?? (await this.secrets.get('OPENAI_API_KEY'));
       if (!key) throw new ConfigError('OPENAI_API_KEY is not configured');
-      return new OpenAIProvider(key);
+      return new OpenAIProvider(key, { estimateCost: this.priceBook.estimatorFor('openai') });
     }
     if (id === 'openrouter') {
       // Single OpenRouter provider lives in reviewer-core (shared with the CI
@@ -258,14 +260,12 @@ export class Container {
       // prices (with the static table as a fallback) rather than a hardcoded one.
       const key = candidateKey ?? (await this.secrets.get('OPENROUTER_API_KEY'));
       if (!key) throw new ConfigError('OPENROUTER_API_KEY is not configured');
-      return new OpenRouterProvider(key, {
-        estimateCost: (model, tokensIn, tokensOut) =>
-          this.priceBook.estimate(model, tokensIn, tokensOut),
-      });
+      return new OpenRouterProvider(key, { estimateCost: this.priceBook.estimatorFor('openrouter') });
     }
     const key = candidateKey ?? (await this.secrets.get('ANTHROPIC_API_KEY'));
     if (!key) throw new ConfigError('ANTHROPIC_API_KEY is not configured');
-    return new AnthropicProvider(key);
+    // The Messages API returns no cost: price its tokens from the PriceBook too.
+    return new AnthropicProvider(key, { estimateCost: this.priceBook.estimatorFor('anthropic') });
   }
 
   /**
