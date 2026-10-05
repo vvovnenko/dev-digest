@@ -33,7 +33,7 @@ gate: one that matches injection patterns is blocked ([05](05-skill-url-import.m
   getter is `src/platform/container.ts:139-141`.
 - **Server, changed:** `src/modules/agents/**` — skill links carry a per-agent `enabled`
   flag, `skill_count` on every agent, `enabledSkills(ws, agentId)`
-  (`src/modules/agents/repository.ts:222-244`); `src/modules/reviews/**` — the run loads
+  (`src/modules/agents/repository.ts:229-251`); `src/modules/reviews/**` — the run loads
   the enabled skills and passes them to the engine
   (`src/modules/reviews/run-executor.ts:166-176,219-220`); `src/db/pg-errors.ts`
   (`isUniqueViolation`, moved out of `run.repo.ts`); `ConflictError` (409,
@@ -135,9 +135,9 @@ which `isUniqueViolation` finds through Drizzle's `cause` chain (`src/db/pg-erro
 
 | Method | Path | Change |
 | ------ | ---- | ------ |
-| GET | `/agents`, `/agents/:id` | `skill_count` |
+| GET | `/agents`, `/agents/:id` | `skill_count`; `/agents` lists oldest first, `id` breaking a tie (`repository.ts:36-43`; test `test/agents-versions.it.test.ts:352-375`) |
 | GET | `/agents/:id/skills` | `AgentSkillLink[]` with `enabled` (`routes.ts:119-128`) |
-| POST | `/agents/:id/skills` | body `AgentSkillsUpdate` (`routes.ts:130-145`). Any change to the list — set, order or a flag — bumps the agent's version and snapshots `skills` + `skill_links` in one transaction (`repository.ts:144-160,267-298`); the same list again writes nothing. A skill outside the workspace is a 404 |
+| POST | `/agents/:id/skills` | body `AgentSkillsUpdate` (`routes.ts:130-145`). Any change to the list — set, order or a flag — bumps the agent's version and snapshots `skills` + `skill_links` in one transaction (`repository.ts:151-167,274-305`); the same list again writes nothing. A skill outside the workspace is a 404 |
 
 `POST /pulls/:id/review` is unchanged: a run reads the agent's skills when it executes.
 

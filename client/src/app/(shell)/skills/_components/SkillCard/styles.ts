@@ -59,6 +59,8 @@ export const s = {
     color: "var(--text-muted)",
   } satisfies CSSProperties,
   footer: {
+    display: "flex",
+    justifyContent: "space-between",
     borderTop: "1px solid var(--border)",
     marginTop: 10,
     paddingTop: 8,

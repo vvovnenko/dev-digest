@@ -33,15 +33,22 @@ export interface EnabledSkillRow {
 export class AgentsRepository implements AgentStore {
   constructor(private db: Db) {}
 
+  /** Oldest first, id breaking a tie. Without an ORDER BY, Postgres returns heap order, and every update moves the row. */
   async list(workspaceId: string): Promise<AgentRow[]> {
-    return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
+    return this.db
+      .select()
+      .from(t.agents)
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .orderBy(asc(t.agents.createdAt), asc(t.agents.id));
   }
 
+  /** The enabled agents, in `list` order. */
   async listEnabled(workspaceId: string): Promise<AgentRow[]> {
     return this.db
       .select()
       .from(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)));
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.enabled, true)))
+      .orderBy(asc(t.agents.createdAt), asc(t.agents.id));
   }
 
   async getById(workspaceId: string, id: string): Promise<AgentRow | undefined> {

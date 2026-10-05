@@ -10,16 +10,18 @@ UI summary:
 - The sidebar gets a **SKILLS LAB** section, Skills (`g s`) then Agents — an approved
   edit of a vendored file, `src/vendor/ui/nav.ts` (HW2 adds Conventions the same way).
 - `/skills`: a grid of skill cards (name, type badge, source, description, a global
-  enabled toggle, "N agents", delete), local search, and **Add Skill ▾** → Create from
+  enabled toggle, "N agents", the current version `vN`, delete), local search, and **Add Skill ▾** → Create from
   scratch (a modal) or Import file… (a modal: an optional skill name first, then pick a `.md` / `.zip`, see the parsed draft,
   the skipped files and the warnings, then Save skill). A card opens `/skills/:id`.
 - `/skills/:id`: the cards on the left, and the tabs **Config** (enabled, name, the
   description as the skill's "When to apply" line, type, a line-numbered body editor with
   a token count; Save sends only changed fields), **Preview** (the block exactly as the
-  agent receives it, default tab), **Versions** (Diff against the current skill, Restore as
+  agent receives it, default tab), **Versioning** (Diff against the current skill, Restore as
   a new version); **Stats** (which agents use it) is hidden until HW8. `?tab=` holds the tab.
 - `/agents/:id?tab=skills`: every workspace skill in the agent's order — drag or keyboard
-  to reorder, a checkbox to enable it for this agent, "N of M enabled", a filter. Each
+  to reorder, a toggle to enable it for this agent, "N of M enabled", a filter. Only an
+  enabled skill can be dragged or keyboard-moved (one that is off never reaches the
+  prompt), and a keyboard move steps over the rows that are off. Each
   action saves the whole ordered list once. Agent cards show "N skills".
 - Run trace → Prompt assembly: "Skills (dynamic) · N skills · +T tokens", then one block
   per skill with its version and added tokens; older traces keep the single block.

@@ -52,6 +52,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-03** — pr-self-review's D8 reads every backticked token in a spec's **Unchanged** zone as an item, and a token with no `/` or `.` matches any path segment of that name — `ConfigTab` there would also freeze `skills/[id]/…/ConfigTab/**` → list full paths in an Unchanged zone. Evidence: `.claude/skills/pr-self-review/scripts/specs.mjs:94-97`
 - **2026-10-04** — `deepseek/deepseek-v4-flash` on OpenRouter (served by AtlasCloud) reasons before it answers, and its hidden reasoning counts against `max_tokens`: the same conventions prompt cost 4.8K–6.8K completion tokens, of which 2.2K–4.7K were `reasoning_tokens`, for ~2.5K tokens of JSON. Past the cap it ends `finish_reason: length` (the provider throws "output was cut off at the token limit"), still billed. `reasoning: { effort: "low" | "none" }` did not reduce it (4649 / 4716 reasoning tokens) → size `maxTokens` for reasoning + output (conventions: 12000), and measure `usage.completion_tokens_details.reasoning_tokens` before trusting an effort knob. Evidence: `server/src/modules/conventions/constants.ts:30-36`, `reviewer-core/src/llm/openrouter.ts:130-137`
   - **2026-10-04** — Wider than measured: a later live scan took 84 s and 8920 completion tokens (13 of 15 kept), close to the OpenRouter client's 90 s per-attempt timeout; the cap comment moved to `server/src/modules/conventions/constants.ts:30-37`. Evidence: `server/src/modules/conventions/constants.ts:30-37`, `reviewer-core/src/llm/openrouter.ts:57`
+- **2026-10-05** — Running pr-self-review on a long-lived branch against its default base goes far over budget: `module/L02` vs `origin/main` is 703 files and ~180 reviewer tasks, while `max_tasks` is 24, so the plan comes out INCOMPLETE. `select-skills.mjs` diffs the base against the working tree, uncommitted edits included, so `--base HEAD` plus a small uncommitted change in `client/src` and `server/src` gives a mixed diff that routes to both the ui and backend skill groups → check the size first with `node .claude/skills/pr-self-review/scripts/select-skills.mjs --base <ref> --summary` (it only prints). Evidence: `.claude/skills/pr-self-review/routing.json:7`
 
 ## Recurring errors & fixes
 
@@ -131,6 +132,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — Conventions scan "cut off at the token limit (6000)" fix (cap 12000; reasoning.effort probed and dropped): +1 (Tool & library notes)
 - **2026-10-04** — Conventions scan as a background job (contracts: scan status + latest_scan): +1 nuance (Tool & library notes)
 - **2026-10-04** — Skill URL import + injection gate (contract, parallel server/client/docs agents, citation remap across specs/docs/skills): +1 nuance (What doesn't work)
+- **2026-10-05** — HW2 check against the 53 grading criteria (audit + small client fixes): +1 (Tool & library notes)
 - **2026-10-05** — HW2 #21: push-gate hooks removed, pr-self-review 1.2.0 (manual run only): +1 (Codebase patterns)
 
 ## Open questions

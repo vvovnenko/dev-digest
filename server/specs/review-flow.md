@@ -18,7 +18,7 @@ Paths are relative to `server/`.
 `POST /pulls/:id/review` takes a uuid `:id` and the body `{ agentId?: uuid, all?: boolean }` (it may be empty), validated by the route's schema (`RunRequest`). A wrong type or an `agentId` that isn't a uuid is a 422 `validation_error`. The route allows 10 requests/min, but the limiter is not registered under `NODE_ENV=test`. Code: `src/modules/reviews/routes.ts:37-57`, `src/vendor/shared/contracts/platform.ts:272-275`, `src/app.ts:169-181`, `:212-224`. Test: `test/reviews.it.test.ts:182-187` (200), `test/error-envelope.test.ts:82-88` (422 on a non-uuid `agentId`). The 429 is **untested**.
 
 ### R2 — Target agents
-`all: true` picks every `enabled` agent in the workspace. Otherwise `agentId` picks that agent, or it is a 404 `not_found`. With neither, it is a 422 `validation_error` (`Provide agentId or all:true`). The agents are resolved before the PR is read. Code: `src/modules/reviews/service.ts:41-52`, `src/modules/agents/repository.ts:40-53`. Test: `test/reviews.it.test.ts:602-610` (`all`), `:182-189` (`agentId`), `test/error-envelope.test.ts:82-88` (neither). The 404 is **untested**.
+`all: true` picks every `enabled` agent in the workspace, oldest first. Otherwise `agentId` picks that agent, or it is a 404 `not_found`. With neither, it is a 422 `validation_error` (`Provide agentId or all:true`). The agents are resolved before the PR is read. Code: `src/modules/reviews/service.ts:41-52`, `src/modules/agents/repository.ts:45-60`. Test: `test/reviews.it.test.ts:602-610` (`all`), `:182-189` (`agentId`), `test/error-envelope.test.ts:82-88` (neither). The 404 is **untested**.
 
 ### R3 — Workspace scope
 The PR must be in the caller's workspace and its repo must exist. Otherwise it is a 404, and nothing is written. Code: `src/modules/reviews/service.ts:103-106`, `src/modules/reviews/repository/pull.repo.ts:9-19`. Test: **untested**.
@@ -45,7 +45,7 @@ Each run:
 3. adds repo-intel context only when `agent.repoIntel !== false`. If an enrichment fails, its section is left out.
 4. calls reviewer-core `reviewPullRequest` with the agent's prompt, its model, `strategy ?? 'single-pass'`, the agent's `ciFailOn` as `failOn`, its skills when there is at least one, and the run's abort signal.
 
-Code: `src/modules/reviews/run-executor.ts:158-233` (skills `:166-176`, `:219-220`), `src/modules/agents/repository.ts:222-244`, `src/modules/reviews/helpers.ts:89-101`, `src/modules/reviews/constants.ts:12`. Test: `test/reviews.it.test.ts:525-543` (anthropic), `:402-448` (only enabled links of enabled skills, in order, each traced; none → no section and `0 attached`), `:614-644` (a flagged skill is dropped and counted blocked). A missing key is **untested**.
+Code: `src/modules/reviews/run-executor.ts:158-233` (skills `:166-176`, `:219-220`), `src/modules/agents/repository.ts:229-251`, `src/modules/reviews/helpers.ts:89-101`, `src/modules/reviews/constants.ts:12`. Test: `test/reviews.it.test.ts:525-543` (anthropic), `:402-448` (only enabled links of enabled skills, in order, each traced; none → no section and `0 attached`), `:614-644` (a flagged skill is dropped and counted blocked). A missing key is **untested**.
 
 ### R10 — A `done` run
 The executor writes, in ONE transaction (`completeRunWithReview`) that commits only while the row is still `running`:

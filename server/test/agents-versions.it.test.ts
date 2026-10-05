@@ -348,4 +348,29 @@ d('GET /agents/:id/versions', () => {
       await app.close();
     });
   });
+
+  it('GET /agents lists agents oldest first, whatever order their rows are stored in', async () => {
+    const { db } = pg.handle;
+    const [ws] = await db
+      .select({ id: t.workspaces.id })
+      .from(t.workspaces)
+      .where(eq(t.workspaces.name, 'default'));
+    const row = (name: string, createdAt: string) => ({
+      workspaceId: ws!.id,
+      name,
+      provider: 'openai' as const,
+      model: 'gpt-4o-mini',
+      systemPrompt: 'x',
+      createdAt: new Date(createdAt),
+    });
+    // Stored newer-first. Without an ORDER BY the list follows storage order, which an
+    // update also changes (a new row version) — the agents list reshuffled after edits.
+    const [newer] = await db.insert(t.agents).values(row('Order Newer', '2000-01-02')).returning();
+    const [older] = await db.insert(t.agents).values(row('Order Older', '2000-01-01')).returning();
+
+    const app = await makeApp();
+    const ids = (await app.inject({ method: 'GET', url: '/agents' })).json().map((a: { id: string }) => a.id);
+    expect(ids.slice(0, 2)).toEqual([older!.id, newer!.id]);
+    await app.close();
+  });
 });

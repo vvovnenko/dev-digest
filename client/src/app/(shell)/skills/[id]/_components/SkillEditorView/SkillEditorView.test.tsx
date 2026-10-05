@@ -83,7 +83,7 @@ describe("SkillEditorView", () => {
     data.skill = SKILL;
     nav.search = "tab=preview&x=1";
     renderView();
-    await user.click(screen.getByRole("button", { name: "Versions" }));
+    await user.click(screen.getByRole("button", { name: "Versioning" }));
     expect(replace).toHaveBeenCalledWith("/skills/s1?tab=versions&x=1");
   });
 

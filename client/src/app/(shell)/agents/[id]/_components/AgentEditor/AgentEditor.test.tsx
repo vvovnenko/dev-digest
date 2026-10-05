@@ -79,7 +79,7 @@ describe("A2 Agent Editor (smoke)", () => {
   it("renders the Skills tab without saving anything", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="skills" onTab={() => {}} />);
     expect(screen.getByText("1 of 1 enabled")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "branch-coverage" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "branch-coverage" })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByText("Configuration")).not.toBeVisible();
     expect(setSkills).not.toHaveBeenCalled();
   });

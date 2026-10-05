@@ -30,6 +30,12 @@ export const s = {
     cursor: active ? "grab" : "not-allowed",
     opacity: active ? 1 : 0.4,
   }),
+  toggle: (blocked: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    cursor: blocked ? "not-allowed" : "pointer",
+  }),
   name: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } satisfies CSSProperties,
   rowEnd: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
   open: { fontSize: 12, color: "var(--text-muted)", textDecoration: "none" } satisfies CSSProperties,

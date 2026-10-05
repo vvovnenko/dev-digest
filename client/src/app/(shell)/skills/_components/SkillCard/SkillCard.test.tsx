@@ -41,13 +41,14 @@ const ui = (props: Partial<React.ComponentProps<typeof SkillCard>> = {}) => (
 );
 
 describe("SkillCard", () => {
-  it("shows the name, type, source, description and agent count", () => {
+  it("shows the name, type, source, description, agent count and current version", () => {
     render(ui());
     expect(screen.getByText("branch-coverage")).toBeInTheDocument();
     expect(screen.getByText("rubric")).toBeInTheDocument();
     expect(screen.getByText("Imported")).toBeInTheDocument();
     expect(screen.getByText("Apply when the diff adds a branch.")).toBeInTheDocument();
     expect(screen.getByText("2 agents")).toBeInTheDocument();
+    expect(screen.getByText("v3")).toBeInTheDocument();
   });
 
   it("toggles the skill globally without opening it", async () => {

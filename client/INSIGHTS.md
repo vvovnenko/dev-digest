@@ -66,6 +66,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — The vendored `Card` sets the `border` shorthand, so overriding one side (`borderLeft…`) on a Card makes React warn about a conflicting style property on rerender → mark a side with an inset `boxShadow` (the accepted stripe on a conventions card), which also avoids a layout shift. Evidence: `src/vendor/ui/primitives/Card.tsx:24`, `src/app/(shell)/repos/[repoId]/conventions/_components/CandidateCard/styles.ts:11`
 - **2026-10-04** — `LineNumberedEditor` is shared now (`src/components/line-numbered-editor/`, promoted for the Conventions modal) but still reads the `skills` namespace (`config.unsaved`, `config.tokens`) → a consumer outside skills gets skill copy for those two labels; pass them in as props before reusing it for anything that isn't a skill body. Evidence: `src/components/line-numbered-editor/LineNumberedEditor.tsx:29`
 - **2026-10-04** — The vendored `Modal` is no portal: its `position: fixed` overlay renders where it is called, so a modal inside a card inherits a disabled card's `opacity: 0.6` and its clicks (Delete, ✕, backdrop) bubble to the card's `onClick`, which opens the skill or agent → render a card's modal beside the card in a fragment, as `ConfirmDeleteModal` is; SkillCard's delete tests fail when it is nested. Evidence: `src/vendor/ui/kit/Modal.tsx:20`, `src/app/(shell)/skills/_components/SkillCard/styles.ts:11`, `src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:103`
+- **2026-10-05** — The agent Skills tab's row order is not `agent_skills.order`: the client regroups live links on top (`liveFirst`, nothing saved on mount), while the server's `withSkillAt` appends a new link (a skill dropped on an agent from `/skills`) after any links that are off → assert Skills-tab rows from the UI, not from the stored order; only the relative order of enabled links (the prompt order) is the same in both. Drops land only on live rows, so a toggle that kept the row in place left a live row under off rows unable to reach position 1. Evidence: `src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/helpers.ts:16-20`, `../server/src/modules/agents/domain.ts:82-88`
 
 ## Tool & library notes
 
@@ -143,6 +144,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — Delete-confirm modal on skill/agent cards (`ConfirmDeleteModal`, copy, tests, pages.md citations): +1 (Codebase patterns) + 1 line-evidence note
 - **2026-10-04** — Skill URL import modal + injection-blocked UI (banner, badge, disabled toggles, agent row; vendor `disabled` props; pages.md): +2 (Tool & library notes ×2) + 1 nuance
 - **2026-10-04** — Import modals: file import as a centered modal (`ImportSkillModal`), optional skill name first in both import modals: +1 (Doc drift) + 1 path note
+- **2026-10-05** — Agent Skills tab: enabled skills kept as one block on top (`liveFirst` in merge + toggle), tests, pages.md: +1 (Codebase patterns)
 
 ## Open questions
 

@@ -93,7 +93,7 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
   (`DiffTab.tsx:23,46-55`); posting only on open PRs (`PrDetailView.tsx:109`).
 
 ### `/agents`
-- `AgentsListView` (`src/app/(shell)/agents/page.tsx:12-14`). `useAgents` → `GET /agents`; card
+- `AgentsListView` (`src/app/(shell)/agents/page.tsx:12-14`). `useAgents` → `GET /agents`, oldest first (`../server/src/modules/agents/repository.ts:36-43`); card
   toggle → `PUT /agents/:id` (`AgentsListView.tsx:20-21,92`); card delete → confirm modal (`ConfirmDeleteModal`) → `DELETE /agents/:id`
   (`AgentCard.tsx:30,60-71,86-94`). Search is local, over name and description (`helpers.ts:4-8`). Each card shows
   "N skills" from the agent's `skill_count`, its enabled skill links (`AgentsListView.tsx:90`, `AgentCard.tsx:78-82`).
@@ -115,24 +115,27 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
 - Failed load or missing agent → full-screen "Couldn’t load this agent" (`AgentEditorView.tsx:43-52`). "Add ▾ →
   Create from scratch" goes to `/agents`, not the modal (`:69`); "Run on a PR…" goes to `/` (`:103-105`).
 - **Skills tab** (`AgentEditor/_components/SkillsTab/SkillsTab.tsx`): every workspace skill in one list — the
-  agent's links in their saved order, then the skills it never linked, by name and unchecked
-  (`SkillsTab/helpers.ts:15-29`); `useSkills` → `GET /skills` and `useAgentSkills` → `GET /agents/:id/skills`.
-  A row: drag handle, checkbox (enabled for this agent), mono name, type badge, "disabled globally" when the skill
+  agent's live links (`isRowLive`) on top in saved order, then every other skill by name; turning a skill on puts it at
+  the end of that block, off puts it back among the rest, so any live row can reach position 1 (`SkillsTab/helpers.ts:16-38,54-63`); `useSkills` → `GET /skills` and `useAgentSkills` → `GET /agents/:id/skills`.
+  A row: drag handle, toggle (enabled for this agent; a `<label>` names the switch), mono name, type badge, "disabled globally" when the skill
   itself is off, Open → `/skills/:id`. A skill whose text matches prompt-injection patterns (`injection_detected`)
-  is blocked: red border, "Injection detected" instead of "disabled globally" (tooltip `agents.json:113`), and a
-  disabled, unchecked checkbox; it never counts as enabled and a reorder keeps its stored link flag
-  (`SkillsTab.tsx:172-194,218-232`, `SkillsTab/helpers.ts:45-69`). Header: "{linked} of {total} enabled" (`agents.json:95`) and a filter;
-  reordering is off while filtering. Drag and drop, or keyboard on the handle (Space lifts, ↑/↓ move, Space
-  drops, Esc cancels). Every tick, drop or keyboard drop sends the whole ordered list once —
+  is blocked: red border, "Injection detected" instead of "disabled globally" (tooltip `agents.json:114`), and a
+  disabled toggle, off; it never counts as enabled and a reorder keeps its stored link flag
+  (`SkillsTab.tsx:178-202,233-243`, `SkillsTab/helpers.ts:54-97`). Header: "{linked} of {total} enabled" (`agents.json:95`) and a filter;
+  reordering is off while filtering. Only a live row (on for this agent, not blocked — `isRowLive`) moves: any
+  other row is not draggable, takes no drop, and its handle is disabled with "Enable the skill to reorder it"
+  (`agents.json:101`); a keyboard ↑/↓ steps over such rows to the next live one (`nextLiveIndex`)
+  (`SkillsTab.tsx:80,95,111-113,179-181,213-220`, `SkillsTab/helpers.ts:83-92`). Drag and drop, or keyboard on the handle (Space lifts, ↑/↓ move, Space
+  drops, Esc cancels). Every toggle, drop or keyboard drop sends the whole ordered list once —
   `useSetAgentSkills` → `POST /agents/:id/skills {links}`, optimistic, one agent's saves in order
   (`src/lib/hooks/agents.ts:97-125`); nothing is sent on mount. Each save is a new agent version.
 
 ### `/skills`
 - `SkillsListView` (`src/app/(shell)/skills/page.tsx:12-14`, title `shell.json:52`). `useSkills` →
   `GET /skills`; a grid of `SkillCard`s: mono name (a button, "Open {name}"), type badge, source, description,
-  "{n} agents" (agents with it linked and enabled), a toggle → `PUT /skills/:id {enabled}` (off and disabled while the
+  "{n} agents" (agents with it linked and enabled) and the current version `vN` in the footer, a toggle → `PUT /skills/:id {enabled}` (off and disabled while the
   skill is blocked by `injection_detected`), delete → a confirm modal
-  (`ConfirmDeleteModal`) that names the agent count → `DELETE /skills/:id` (`SkillCard.tsx:37-43,53-64,73-78,102,105-117`). Search is local
+  (`ConfirmDeleteModal`) that names the agent count → `DELETE /skills/:id` (`SkillCard.tsx:37-43,53-64,73-78,102-105,108-120`). Search is local
   (`SkillsListView.tsx:22`). A card opens `/skills/:id?tab=preview` (`SkillsListView.tsx:62`). Breadcrumb
   "Skills Lab › Skills". States: skeletons, "Could not load skills.", "No skills yet", "No skill matches …"
   (`SkillsListView.tsx:45-58`).
@@ -172,7 +175,7 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
 - **Preview**: "Rendered as the reviewing agent receives it." and the block `### name` / `When to apply:` /
   body, the same format as the engine (`src/lib/skills.ts:26-30`), with its tokens
   (`PreviewTab/PreviewTab.tsx:13-30`).
-- **Versions**: `useSkillVersions` → `GET /skills/:id/versions`, newest first: `vN`, note, date, "Current" or
+- **Versioning** (`?tab=versions`): `useSkillVersions` → `GET /skills/:id/versions`, newest first: `vN`, note, date, "Current" or
   **Diff** (a line diff against the current skill, in a modal) and **Restore** (confirm →
   `POST /skills/:id/versions/:version/restore`, a new version) (`VersionsTab/VersionsTab.tsx:23-27,43-78`).
 - **Stats** is hidden until HW8: no tab, and `?tab=stats` falls back to Preview (`SkillEditor/constants.ts:10-19`).

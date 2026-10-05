@@ -271,7 +271,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   test `test/integration.it.test.ts:301-311`).
 - An agent's config edit and a change to its skill links — the set, the order or a per-agent
   `enabled` flag — each bump `version` and write that version's snapshot in one transaction that
-  locks the agent row (`src/modules/agents/repository.ts:92-137`, `:261-298`). The snapshot's
+  locks the agent row (`src/modules/agents/repository.ts:99-144`, `:268-305`). The snapshot's
   `skills` lists the enabled links' ids in prompt order and `skill_links` every link with its flag
   (`:144-160`); tests `test/agents-versions.it.test.ts:200-260`, `:262-317`. Linking a skill that
   isn't in the agent's workspace is a 404 `Skill not found`, checked before that transaction

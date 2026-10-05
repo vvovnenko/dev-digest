@@ -151,7 +151,7 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
 - `wait --url tab=skills`: `?tab=` accepts `config|skills`
   (`../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/constants.ts:2`, set at `../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/AgentEditorView.tsx:34`).
 - `wait --text "3 of 7 enabled"`: the tab's pill, enabled links of all workspace skills
-  (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`,
+  (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:161`,
   `../client/messages/en/agents.json:95`) — the seed's three Test Quality skills, linked and enabled, out of its seven.
 
 ### 09 — Run a review on PR #482, watch it live, accept its finding and open its trace
@@ -212,7 +212,7 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | branch-coverage · Open branch-coverage (`aria-label`) | 08 | seed `../server/src/db/seed-skills.ts:21`; message `../client/messages/en/skills.json:109` (`../client/src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:56`) |
 | Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:211`; block format `../client/src/lib/skills.ts:28` (= `../reviewer-core/src/prompt.ts:84`) |
 | Open Test Quality Reviewer (`aria-label`) · Skills (tab button) | 08 | messages `../client/messages/en/agents.json:7,51`; seed name `../server/src/db/seed.ts:19` |
-| 3 of 7 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`) over the seed's three linked skills out of its seven |
+| 3 of 7 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:161`) over the seed's three linked skills out of its seven |
 | Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:80,82` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
 | Run Review · Run all enabled agents | 09 | messages `../client/messages/en/prReview.json:52,49` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:87,65`) |
 | Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:93`) |

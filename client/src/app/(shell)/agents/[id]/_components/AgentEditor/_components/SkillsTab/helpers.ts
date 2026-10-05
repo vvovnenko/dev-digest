@@ -3,14 +3,26 @@ import type { AgentSkillLink, AgentSkillLinkInput, Skill } from "@devdigest/shar
 /** One row of the agent's Skills tab: a workspace skill and whether this agent uses it. */
 export interface SkillRow {
   skill: Skill;
-  /** Linked AND enabled for this agent (the checkbox). */
+  /** Linked AND enabled for this agent (the toggle). */
   enabled: boolean;
 }
 
 /**
- * Every workspace skill as one ordered list: the agent's links in their saved
- * order first (a link whose skill was deleted is dropped), then the skills the
- * agent never linked, by name and unchecked.
+ * The live rows (`isRowLive`) as one block on top, in their current order, then every
+ * other row by name. A drop only lands on a live row, so a live row below rows that
+ * are off could never reach the top; their relative order is the prompt order, so
+ * regrouping never changes the prompt.
+ */
+function liveFirst(rows: readonly SkillRow[]): SkillRow[] {
+  const live = rows.filter(isRowLive);
+  const rest = rows.filter((r) => !isRowLive(r)).sort((a, b) => a.skill.name.localeCompare(b.skill.name));
+  return [...live, ...rest];
+}
+
+/**
+ * Every workspace skill as one ordered list: the agent's live links in their saved
+ * order first (a link whose skill was deleted is dropped), then every other skill —
+ * linked but off, blocked, or never linked — by name (`liveFirst`).
  */
 export function mergeAgentSkills(skills: readonly Skill[], links: readonly AgentSkillLink[]): SkillRow[] {
   const byId = new Map(skills.map((sk) => [sk.id, sk]));
@@ -21,11 +33,8 @@ export function mergeAgentSkills(skills: readonly Skill[], links: readonly Agent
       return skill ? [{ skill, enabled: l.enabled }] : [];
     });
   const linkedIds = new Set(linked.map((r) => r.skill.id));
-  const rest = skills
-    .filter((sk) => !linkedIds.has(sk.id))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((skill) => ({ skill, enabled: false }));
-  return [...linked, ...rest];
+  const rest = skills.filter((sk) => !linkedIds.has(sk.id)).map((skill) => ({ skill, enabled: false }));
+  return liveFirst([...linked, ...rest]);
 }
 
 /** The full ordered body of `POST /agents/:id/skills` — array order is prompt order. */
@@ -42,9 +51,15 @@ export function moveRow<T>(items: readonly T[], from: number, to: number): T[] {
   return next;
 }
 
-/** Flip one skill's checkbox, keeping every row's position; a blocked row (`isRowLive`) stays as it is. */
+/**
+ * Flip one skill's toggle: a row turned on joins the end of the live block on top, a row
+ * turned off goes back among the rest by name (`liveFirst`); a blocked row (`isRowLive`)
+ * stays as it is.
+ */
 export function toggleRow(rows: readonly SkillRow[], skillId: string): SkillRow[] {
-  return rows.map((r) => (r.skill.id === skillId && !r.skill.injection_detected ? { ...r, enabled: !r.enabled } : r));
+  return liveFirst(
+    rows.map((r) => (r.skill.id === skillId && !r.skill.injection_detected ? { ...r, enabled: !r.enabled } : r)),
+  );
 }
 
 /** Rows whose name, description or type contains the query (case-insensitive). */
@@ -57,11 +72,23 @@ export function filterRows(rows: readonly SkillRow[], query: string): SkillRow[]
 }
 
 /**
- * Whether the row shows checked: enabled for this agent AND its skill not blocked for prompt
- * injection. A blocked row shows unchecked but keeps its stored flag, which `toLinks` sends.
+ * Whether the row's toggle shows on: enabled for this agent AND its skill not blocked for prompt
+ * injection. A blocked row shows off but keeps its stored flag, which `toLinks` sends.
+ * Only live rows can be dragged or keyboard-moved — the others never reach the prompt.
  */
 export function isRowLive(row: SkillRow): boolean {
   return row.enabled && !row.skill.injection_detected;
+}
+
+/**
+ * Index of the nearest live row before (`step` -1) or after (`step` 1) `from`, or `from`
+ * when there is none — a keyboard move steps over rows that never reach the prompt.
+ */
+export function nextLiveIndex(rows: readonly SkillRow[], from: number, step: -1 | 1): number {
+  for (let i = from + step; i >= 0 && i < rows.length; i += step) {
+    if (isRowLive(rows[i]!)) return i;
+  }
+  return from;
 }
 
 /** How many rows are live (`isRowLive`) — the "N of M enabled" pill. */

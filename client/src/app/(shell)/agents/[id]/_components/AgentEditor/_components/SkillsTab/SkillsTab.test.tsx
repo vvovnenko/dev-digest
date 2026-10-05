@@ -1,7 +1,8 @@
 /**
  * Agent → Skills tab: every workspace skill in the agent's prompt order. Each user
- * action (tick, drop, keyboard drop) saves the whole ordered list exactly once;
- * nothing is saved on mount.
+ * action (toggle, drop, keyboard drop) saves the whole ordered list exactly once;
+ * nothing is saved on mount. Only enabled (live) rows can be moved, and they stay
+ * one block on top, so any of them can reach position 1.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
@@ -88,19 +89,43 @@ function dataTransfer() {
 }
 
 describe("SkillsTab", () => {
-  it("lists the agent's links in order, then the rest, with the enabled pill, and saves nothing on mount", () => {
+  it("lists the enabled skills first, then the rest by name, with the enabled pill, and saves nothing on mount", () => {
     renderTab();
     expect(rowNames()).toEqual(["edge-case-checklist", "branch-coverage", "mocking-discipline"]);
     expect(screen.getByText("1 of 3 enabled")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "edge-case-checklist" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("checkbox", { name: "branch-coverage" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("Order matters — earlier skills appear earlier in the assembled prompt. Drag to reorder.")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "edge-case-checklist" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "branch-coverage" })).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByText("Order matters — earlier skills appear earlier in the assembled prompt. Drag an enabled skill to reorder."),
+    ).toBeInTheDocument();
     expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("shows an enabled skill saved below skills that are off on top, and it can be dropped to position 1", () => {
+    state.links = [
+      { agent_id: "ag1", skill_id: "s-branch", order: 0, enabled: false },
+      { agent_id: "ag1", skill_id: "s-mock", order: 1, enabled: true },
+      { agent_id: "ag1", skill_id: "s-edge", order: 2, enabled: true },
+    ];
+    renderTab();
+    expect(rowNames()).toEqual(["mocking-discipline", "edge-case-checklist", "branch-coverage"]);
+    expect(mutate).not.toHaveBeenCalled();
+
+    const rows = within(screen.getByRole("list", { name: "Skills" })).getAllByRole("listitem");
+    const dt = dataTransfer();
+    fireEvent.dragStart(rows[1]!, { dataTransfer: dt });
+    fireEvent.dragOver(rows[0]!, { dataTransfer: dt });
+    fireEvent.drop(rows[0]!, { dataTransfer: dt });
+    expect(sent()).toEqual([
+      { skill_id: "s-edge", enabled: true },
+      { skill_id: "s-mock", enabled: true },
+      { skill_id: "s-branch", enabled: false },
+    ]);
   });
 
   it("marks a skill that is turned off on the Skills page", () => {
     renderTab();
-    const row = screen.getByRole("checkbox", { name: "mocking-discipline" }).closest("li")!;
+    const row = screen.getByRole("switch", { name: "mocking-discipline" }).closest("li")!;
     expect(within(row).getByText("disabled globally")).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "Open mocking-discipline" })).toHaveAttribute("href", "/skills/s-mock");
   });
@@ -109,7 +134,7 @@ describe("SkillsTab", () => {
     const user = userEvent.setup();
     state.skills = state.skills!.map((sk) => (sk.id === "s-edge" ? { ...sk, injection_detected: true } : sk));
     renderTab();
-    const box = screen.getByRole("checkbox", { name: "edge-case-checklist" });
+    const box = screen.getByRole("switch", { name: "edge-case-checklist" });
     expect(box).toHaveAttribute("aria-checked", "false");
     expect(box).toBeDisabled();
     const row = box.closest("li")!;
@@ -124,41 +149,71 @@ describe("SkillsTab", () => {
 
   it("reordering keeps a blocked row's stored flag", () => {
     state.skills = state.skills!.map((sk) => (sk.id === "s-edge" ? { ...sk, injection_detected: true } : sk));
+    state.links = [
+      { agent_id: "ag1", skill_id: "s-edge", order: 0, enabled: true },
+      { agent_id: "ag1", skill_id: "s-branch", order: 1, enabled: true },
+      { agent_id: "ag1", skill_id: "s-mock", order: 2, enabled: true },
+    ];
     renderTab();
+    // The blocked edge-case-checklist sorts below the two live rows.
+    expect(rowNames()).toEqual(["branch-coverage", "mocking-discipline", "edge-case-checklist"]);
     const rows = within(screen.getByRole("list", { name: "Skills" })).getAllByRole("listitem");
     const dt = dataTransfer();
-    fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
+    fireEvent.dragStart(rows[1]!, { dataTransfer: dt });
     fireEvent.dragOver(rows[0]!, { dataTransfer: dt });
     fireEvent.drop(rows[0]!, { dataTransfer: dt });
     expect(sent()).toEqual([
-      { skill_id: "s-mock", enabled: false },
+      { skill_id: "s-mock", enabled: true },
+      { skill_id: "s-branch", enabled: true },
       { skill_id: "s-edge", enabled: true },
-      { skill_id: "s-branch", enabled: false },
     ]);
   });
 
-  it("a tick saves the whole ordered list once, with the new flag", async () => {
+  it("a toggle moves the skill it turns on to the end of the enabled block and saves the list once", async () => {
     const user = userEvent.setup();
     renderTab();
-    await user.click(screen.getByRole("checkbox", { name: "mocking-discipline" }));
+    await user.click(screen.getByRole("switch", { name: "mocking-discipline" }));
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(sent()).toEqual([
       { skill_id: "s-edge", enabled: true },
-      { skill_id: "s-branch", enabled: false },
       { skill_id: "s-mock", enabled: true },
+      { skill_id: "s-branch", enabled: false },
     ]);
   });
 
-  it("dropping a row on another saves the reordered list once", () => {
+  it("dropping an enabled row on another saves the reordered list once", () => {
+    state.links = [...state.links!, { agent_id: "ag1", skill_id: "s-mock", order: 2, enabled: true }];
     renderTab();
+    expect(rowNames()).toEqual(["edge-case-checklist", "mocking-discipline", "branch-coverage"]);
     const rows = within(screen.getByRole("list", { name: "Skills" })).getAllByRole("listitem");
     const dt = dataTransfer();
-    fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
+    fireEvent.dragStart(rows[1]!, { dataTransfer: dt });
     fireEvent.dragOver(rows[0]!, { dataTransfer: dt });
     fireEvent.drop(rows[0]!, { dataTransfer: dt });
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(sent().map((l: { skill_id: string }) => l.skill_id)).toEqual(["s-mock", "s-edge", "s-branch"]);
     expect(screen.getByText("mocking-discipline moved to position 1 of 3.")).toBeInTheDocument();
+  });
+
+  it("only enabled rows can be dragged or take a drop", () => {
+    renderTab();
+    const rows = within(screen.getByRole("list", { name: "Skills" })).getAllByRole("listitem");
+    // edge-case-checklist is on; branch-coverage is linked but off; mocking-discipline is not linked.
+    expect(rows.map((li) => li.getAttribute("draggable"))).toEqual(["true", "false", "false"]);
+    const handle = screen.getByRole("button", { name: "Reorder branch-coverage" });
+    expect(handle).toHaveAttribute("aria-disabled", "true");
+    expect(handle).toHaveAttribute("title", "Enable the skill to reorder it");
+
+    const dt = dataTransfer();
+    fireEvent.dragStart(rows[2]!, { dataTransfer: dt });
+    fireEvent.dragOver(rows[0]!, { dataTransfer: dt });
+    fireEvent.drop(rows[0]!, { dataTransfer: dt });
+    const dt2 = dataTransfer();
+    fireEvent.dragStart(rows[0]!, { dataTransfer: dt2 });
+    fireEvent.dragOver(rows[1]!, { dataTransfer: dt2 });
+    fireEvent.drop(rows[1]!, { dataTransfer: dt2 });
+    expect(mutate).not.toHaveBeenCalled();
+    expect(rowNames()).toEqual(["edge-case-checklist", "branch-coverage", "mocking-discipline"]);
   });
 
   it("dropping a row on itself saves nothing", () => {
@@ -170,12 +225,19 @@ describe("SkillsTab", () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
-  it("keyboard: Space lifts, arrows move, Space drops — one save", async () => {
+  it("keyboard: Space lifts, arrows move within the enabled block, Space drops — one save", async () => {
     const user = userEvent.setup();
+    state.links = [...state.links!, { agent_id: "ag1", skill_id: "s-mock", order: 2, enabled: true }];
     renderTab();
+    expect(rowNames()).toEqual(["edge-case-checklist", "mocking-discipline", "branch-coverage"]);
     screen.getByRole("button", { name: "Reorder mocking-discipline" }).focus();
     await user.keyboard(" ");
-    await user.keyboard("{ArrowUp}{ArrowUp}");
+    // ArrowDown stops at the end of the enabled block: branch-coverage below is off.
+    await user.keyboard("{ArrowDown}");
+    expect(rowNames()).toEqual(["edge-case-checklist", "mocking-discipline", "branch-coverage"]);
+    await user.keyboard("{ArrowUp}");
+    expect(rowNames()).toEqual(["mocking-discipline", "edge-case-checklist", "branch-coverage"]);
+    await user.keyboard("{ArrowUp}");
     expect(mutate).not.toHaveBeenCalled();
     expect(rowNames()).toEqual(["mocking-discipline", "edge-case-checklist", "branch-coverage"]);
     await user.keyboard(" ");
@@ -183,17 +245,35 @@ describe("SkillsTab", () => {
     expect(sent().map((l: { skill_id: string }) => l.skill_id)).toEqual(["s-mock", "s-edge", "s-branch"]);
   });
 
-  it("keyboard: Escape puts the row back and saves nothing", async () => {
+  it("keyboard: a row that is off can't be picked up", async () => {
     const user = userEvent.setup();
     renderTab();
-    screen.getByRole("button", { name: "Reorder branch-coverage" }).focus();
-    await user.keyboard(" {ArrowDown}{Escape}");
+    const handle = screen.getByRole("button", { name: "Reorder branch-coverage" });
+    handle.focus();
+    await user.keyboard(" {ArrowUp} ");
+    expect(handle).toHaveAttribute("aria-pressed", "false");
     expect(rowNames()).toEqual(["edge-case-checklist", "branch-coverage", "mocking-discipline"]);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("keyboard: Escape puts the row back and saves nothing", async () => {
+    const user = userEvent.setup();
+    state.links = [...state.links!, { agent_id: "ag1", skill_id: "s-mock", order: 2, enabled: true }];
+    renderTab();
+    screen.getByRole("button", { name: "Reorder edge-case-checklist" }).focus();
+    await user.keyboard(" {ArrowDown}");
+    expect(rowNames()).toEqual(["mocking-discipline", "edge-case-checklist", "branch-coverage"]);
+    await user.keyboard("{Escape}");
+    expect(rowNames()).toEqual(["edge-case-checklist", "mocking-discipline", "branch-coverage"]);
     expect(mutate).not.toHaveBeenCalled();
   });
 
   it("keyboard: moving focus to another control cancels the lift; a re-insert blur does not", async () => {
     const user = userEvent.setup();
+    state.links = [
+      { agent_id: "ag1", skill_id: "s-edge", order: 0, enabled: true },
+      { agent_id: "ag1", skill_id: "s-branch", order: 1, enabled: true },
+    ];
     renderTab();
     const handle = screen.getByRole("button", { name: "Reorder edge-case-checklist" });
     handle.focus();
@@ -206,22 +286,27 @@ describe("SkillsTab", () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
-  it("filtering narrows the rows and turns reordering off, but ticks still save the full list", async () => {
+  it("filtering narrows the rows and turns reordering off, but toggles still save the full list", async () => {
     const user = userEvent.setup();
     renderTab();
-    await user.type(screen.getByRole("textbox", { name: "Filter skills…" }), "branch");
-    expect(rowNames()).toEqual(["branch-coverage"]);
+    await user.type(screen.getByRole("textbox", { name: "Filter skills…" }), "edge");
+    expect(rowNames()).toEqual(["edge-case-checklist"]);
+    // edge-case-checklist is on, so only the filter keeps it from moving.
     const row = screen.getByRole("listitem");
     expect(row).toHaveAttribute("draggable", "false");
+    const handle = screen.getByRole("button", { name: "Reorder edge-case-checklist" });
+    expect(handle).toHaveAttribute("title", "Clear the filter to reorder");
 
-    screen.getByRole("button", { name: "Reorder branch-coverage" }).focus();
-    await user.keyboard(" {ArrowUp} ");
+    handle.focus();
+    await user.keyboard(" {ArrowDown} ");
+    expect(handle).toHaveAttribute("aria-pressed", "false");
     expect(mutate).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("checkbox", { name: "branch-coverage" }));
+    // Turned off, edge-case-checklist goes back among the rest by name.
+    await user.click(screen.getByRole("switch", { name: "edge-case-checklist" }));
     expect(sent()).toEqual([
-      { skill_id: "s-edge", enabled: true },
-      { skill_id: "s-branch", enabled: true },
+      { skill_id: "s-branch", enabled: false },
+      { skill_id: "s-edge", enabled: false },
       { skill_id: "s-mock", enabled: false },
     ]);
   });

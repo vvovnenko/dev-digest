@@ -1,6 +1,6 @@
 /* SkillCard — one skill in the Skills grid and in the editor's left list: name,
-   type, source, description, how many agents use it, a global enabled toggle
-   and delete (asked in a modal beside the card). The name is the keyboard
+   type, source, description, how many agents use it, its current version, a
+   global enabled toggle and delete (asked in a modal beside the card). The name is the keyboard
    button; the whole card also clicks. */
 "use client";
 
@@ -99,7 +99,10 @@ export function SkillCard({
             {t(`listItem.source.${skill.source}`)}
           </span>
         </div>
-        <div style={s.footer}>{t("card.agentCount", { count: agentCount })}</div>
+        <div style={s.footer}>
+          <span>{t("card.agentCount", { count: agentCount })}</span>
+          <span className="mono">{t("editor.version", { version: skill.version })}</span>
+        </div>
       </div>
       {/* Beside the card, not in it: its opacity and onClick would reach the modal. */}
       {confirming && (

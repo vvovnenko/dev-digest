@@ -38,9 +38,9 @@ const ui = (tab: string) => (
 );
 
 describe("SkillEditor", () => {
-  it("shows the Config, Preview and Versions tabs — Stats is hidden until HW8", () => {
+  it("shows the Config, Preview and Versioning tabs — Stats is hidden until HW8", () => {
     render(ui("preview"));
-    for (const name of ["Config", "Preview", "Versions"]) {
+    for (const name of ["Config", "Preview", "Versioning"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: "Stats" })).not.toBeInTheDocument();

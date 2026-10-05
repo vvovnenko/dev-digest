@@ -1,14 +1,15 @@
-/* SkillsTab — every workspace skill in this agent's prompt order: drag (or
-   keyboard-move) to reorder, tick to enable for this agent. Each action saves the
-   whole ordered list once; nothing is saved on mount. Rows come straight from the
-   query data — local state only holds an in-progress drag or keyboard lift. */
+/* SkillsTab — every workspace skill in this agent's prompt order: toggle to enable
+   for this agent, drag (or keyboard-move) an enabled skill to reorder — a skill that
+   is off never reaches the prompt, so it can't be moved. Each action saves the whole
+   ordered list once; nothing is saved on mount. Rows come straight from the query
+   data — local state only holds an in-progress drag or keyboard lift. */
 "use client";
 
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Badge, Checkbox, EmptyState, ErrorState, Icon, Skeleton, TextInput } from "@devdigest/ui";
+import { Badge, EmptyState, ErrorState, Icon, Skeleton, TextInput, Toggle } from "@devdigest/ui";
 import { SkillTypeBadge } from "@/components/skill-type-badge";
 import { InjectionBadge } from "@/components/injection-badge";
 import { useAgentSkills, useSetAgentSkills } from "@/lib/hooks/agents";
@@ -20,6 +21,7 @@ import {
   isRowLive,
   mergeAgentSkills,
   moveRow,
+  nextLiveIndex,
   sameRows,
   toggleRow,
   toLinks,
@@ -75,6 +77,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
       e.preventDefault();
       if (lift && lift.id !== id) return;
       if (!lift) {
+        if (!isRowLive(row)) return;
         setLift({ id, rows });
         setAnnouncement(t("skills.lifted", { name, position: positionOf(rows, id), total: rows.length }));
       } else {
@@ -89,7 +92,7 @@ export function SkillsTab({ agentId }: { agentId: string }) {
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
       const from = positionOf(lift.rows, id) - 1;
-      const next = moveRow(lift.rows, from, from + (e.key === "ArrowUp" ? -1 : 1));
+      const next = moveRow(lift.rows, from, nextLiveIndex(lift.rows, from, e.key === "ArrowUp" ? -1 : 1));
       setLift({ id, rows: next });
       setAnnouncement(t("skills.moved", { name, position: positionOf(next, id), total: next.length }));
     } else if (e.key === "Escape") {
@@ -105,6 +108,9 @@ export function SkillsTab({ agentId }: { agentId: string }) {
     setDragId(null);
     setOverId(null);
     if (!sourceId || sourceId === targetId) return;
+    const source = rows.find((r) => r.skill.id === sourceId);
+    const target = rows.find((r) => r.skill.id === targetId);
+    if (!source || !target || !isRowLive(source) || !isRowLive(target)) return;
     const next = moveRow(rows, positionOf(rows, sourceId) - 1, positionOf(rows, targetId) - 1);
     const moved = next.find((r) => r.skill.id === sourceId);
     if (moved) {
@@ -170,7 +176,9 @@ export function SkillsTab({ agentId }: { agentId: string }) {
         {visible.map((row) => {
           const { skill } = row;
           const blocked = skill.injection_detected;
-          const draggable = !filtering && !lift;
+          const live = isRowLive(row);
+          const movable = !filtering && live;
+          const draggable = movable && !lift;
           return (
             <li
               key={skill.id}
@@ -185,13 +193,13 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                 setOverId(null);
               }}
               onDragOver={(e) => {
-                if (!dragId || filtering) return;
+                if (!dragId || !movable) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
                 if (overId !== skill.id) setOverId(skill.id);
               }}
               onDrop={(e) => onDrop(e, skill.id)}
-              style={{ ...s.row(isRowLive(row), overId === skill.id && dragId !== skill.id, lift?.id === skill.id, blocked), listStyle: "none" }}
+              style={{ ...s.row(live, overId === skill.id && dragId !== skill.id, lift?.id === skill.id, blocked), listStyle: "none" }}
             >
               <button
                 type="button"
@@ -202,8 +210,14 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                 aria-label={t("skills.dragHandle", { name: skill.name })}
                 aria-describedby="agent-skills-keyboard-hint"
                 aria-pressed={lift?.id === skill.id}
-                aria-disabled={filtering}
-                title={filtering ? t("skills.reorderOffWhileFiltering") : t("skills.keyboardHint")}
+                aria-disabled={!movable}
+                title={
+                  filtering
+                    ? t("skills.reorderOffWhileFiltering")
+                    : live
+                      ? t("skills.keyboardHint")
+                      : t("skills.reorderOffWhileDisabled")
+                }
                 onKeyDown={(e) => onHandleKey(e, row)}
                 onBlur={(e) => {
                   // Focus moving to another control cancels a lift. A null relatedTarget
@@ -211,20 +225,17 @@ export function SkillsTab({ agentId }: { agentId: string }) {
                   // keep the lift; the effect above puts focus back on the handle.
                   if (lift?.id === skill.id && e.relatedTarget) setLift(null);
                 }}
-                style={s.handle(!filtering)}
+                style={s.handle(movable)}
               >
                 <Icon.Menu size={15} />
               </button>
-              <Checkbox
-                checked={isRowLive(row)}
-                disabled={blocked}
-                onChange={() => commit(toggleRow(rows, skill.id))}
-                label={
-                  <span className="mono" style={s.name}>
-                    {skill.name}
-                  </span>
-                }
-              />
+              {/* The <label> names the vendored Toggle's switch (it takes no aria-label). */}
+              <label style={s.toggle(blocked)}>
+                <Toggle on={live} disabled={blocked} onChange={() => commit(toggleRow(rows, skill.id))} size={14} />
+                <span className="mono" style={s.name}>
+                  {skill.name}
+                </span>
+              </label>
               <div style={s.rowEnd}>
                 {blocked ? (
                   <span title={t("skills.injectionTitle")}>
