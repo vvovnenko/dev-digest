@@ -94,6 +94,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — Under `vi.useFakeTimers({ shouldAdvanceTime: true })` a hook's `result.current` lags the query cache: it updates only after notifyManager's `setTimeout(0)` batch, so right after `await act(() => mutateAsync())` the cache is new but `result.current.data` is old → assert data with `waitFor`; API call counts can be asserted directly. Evidence: `node_modules/.pnpm/@tanstack+query-core@5.101.0/node_modules/@tanstack/query-core/build/modern/notifyManager.js:3,13`, `src/lib/hooks/conventions.test.tsx:131`
 - **2026-10-04** — In user-event 14, Enter in an `<input>` submits through the submit button it finds inside the `<form>`; the vendored `Modal` renders `footer` outside its children, so a submit button placed in the footer (linked with `form=`) works in a browser but not in tests → keep a modal form's submit button inside the `<form>`. Evidence: `src/vendor/ui/kit/Modal.tsx:61-63`, `src/app/(shell)/skills/_components/AddSkillMenu/_components/ImportSkillUrlModal/ImportSkillUrlModal.tsx:54,78`
 - **2026-10-04** — `new URL("https:example.com/a.md")` parses with `protocol === "https:"`, but the `SkillImportUrlRequest` contract requires the literal `https://` prefix → a protocol-only check enables a button the API answers with 422; test the prefix too. Evidence: `src/app/(shell)/skills/_components/AddSkillMenu/_components/ImportSkillUrlModal/helpers.ts:11-14`, `src/vendor/shared/contracts/knowledge.ts:274`
+- **2026-10-05** — The vendored `Markdown` (react-markdown 9, no `rehype-raw`, `skipHtml` unset) renders raw HTML as literal text instead of hiding it: react-markdown swaps every `raw` node for a text node. So a skill's `<!-- … -->` shows up in full on the skill Preview tab, while GitHub's rendered view of the same file hides it. Don't assume Preview hides HTML; the URL-import injection fixture `plugins/injection-demo/SKILL.md` relies on this. Evidence: `src/vendor/ui/primitives/Markdown.tsx:10`, `node_modules/react-markdown/lib/index.js:355-359`
+- **2026-10-05** — `pnpm typecheck` on an older commit fails with TS2307 "Cannot find module '…/src/app/(shell)/repos/[repoId]/conventions/page.js'" from `.next/types/**`: the tsconfig includes the dev server's generated route types, which belong to the newer tree. Excluding `.next` alone then fails with TS2688 for `node`, because `types: ["node"]` resolves from the config's own folder. → To check an old commit, use a scratch tsconfig that extends `client/tsconfig.json`, includes only `next-env.d.ts`, `**/*.ts` and `**/*.tsx` by absolute path, and sets `typeRoots` to `client/node_modules/@types`. Run `node_modules/.bin/tsc --noEmit -p <it>`. Evidence: `client/tsconfig.json:36`
 
 ## Recurring errors & fixes
 
@@ -144,7 +146,9 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — Delete-confirm modal on skill/agent cards (`ConfirmDeleteModal`, copy, tests, pages.md citations): +1 (Codebase patterns) + 1 line-evidence note
 - **2026-10-04** — Skill URL import modal + injection-blocked UI (banner, badge, disabled toggles, agent row; vendor `disabled` props; pages.md): +2 (Tool & library notes ×2) + 1 nuance
 - **2026-10-04** — Import modals: file import as a centered modal (`ImportSkillModal`), optional skill name first in both import modals: +1 (Doc drift) + 1 path note
+- **2026-10-05** — URL-import demo skills + Claude Code plugin (read-only for client): +1 (Tool & library notes)
 - **2026-10-05** — Agent Skills tab: enabled skills kept as one block on top (`liveFirst` in merge + toggle), tests, pages.md: +1 (Codebase patterns)
+- **2026-10-05** — Typecheck of an older client commit (stale `.next/types`): +1 (Tool & library notes)
 
 ## Open questions
 

@@ -84,7 +84,7 @@ The index writes in `repo-intel/repository.ts` are still not atomic (do-not-touc
 whole change; the repository wraps it.
 
 ```ts
-// reviews/repository/run.repo.ts:211-235 — run row, review, findings, sha and trace
+// reviews/repository/run.repo.ts:199-223 — run row, review, findings, sha and trace
 // commit together; the status guard makes a concurrent cancel win
 export async function completeRunWithReview(db: Db, runId: string, input: …) {
   return db.transaction(async (tx) => {
@@ -108,9 +108,9 @@ Inside a repository, the per-entity helpers take `DbExecutor` (`Db | Tx`,
 **(b) `update(id, fn)` when the decision needs the current row.** The repository locks
 and loads, the domain function decides, the repository writes: all in one transaction,
 and the domain rule stays out of the repository. In the repo:
-`agents/repository.ts:206-235` `replaceSkills(workspaceId, agentId, change)` has exactly
-this shape (`select … .for('update')`, `skillsChanged` from `agents/domain.ts`, then the
-links, the version bump and the snapshot); `update` (`:87-127`) locks the same way.
+`agents/repository.ts:274-305` `replaceSkills(workspaceId, agentId, change)` has exactly
+this shape (`select … .for('update')`, `linksChanged` from `agents/domain.ts`, then the
+links, the version bump and the snapshot); `update` (`:104-144`) locks the same way.
 `test/agents-versions.it.test.ts` proves it: concurrent edits get distinct versions, and
 a failed skills replace rolls back.
 

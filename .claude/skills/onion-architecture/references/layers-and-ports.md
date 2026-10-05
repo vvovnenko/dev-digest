@@ -38,7 +38,7 @@ wired in by the composition root. The service never imports an edge (F1, F4, F9)
 Pure functions over values. No `await`, no `Date.now()`, no `randomUUID()`: pass them in.
 
 ```ts
-// ✗ modules/agents/repository.ts:101-124 — isConfigChange lives in domain.ts, but the
+// ✗ modules/agents/repository.ts:118-141 — isConfigChange lives in domain.ts, but the
 //   next-version arithmetic is still buried in the write
 const configChanged = isConfigChange(existing, patch);
 const nextVersion = configChanged ? existing.version + 1 : existing.version;
@@ -121,10 +121,10 @@ Rules:
   wrapping it again.
 - Infrastructure without an interface of its own (`JobRunner`, `RunBus`) is reached
   through a narrow structural port declared in `ports.ts`: `JobQueue`
-  (`modules/repos/ports.ts:24`) and `RunEvents` (`modules/reviews/ports.ts:72`). The real
+  (`modules/repos/ports.ts:24`) and `RunEvents` (`modules/reviews/ports.ts:75`). The real
   `container.jobs` and `container.runBus` satisfy them without changes.
 - Another module's data: declare the narrow port you need — `AgentLookup`
-  (`modules/reviews/ports.ts:63`) is satisfied by the agents repository, `PollStore`
+  (`modules/reviews/ports.ts:64`) is satisfied by the agents repository, `PollStore`
   (`modules/polling/ports.ts`) by the pulls repository — and let the composition root pass
   it. Never import that module's folder (`onion-no-cross-module`).
 - When the port needs knowledge only the root has, the container adapts it:

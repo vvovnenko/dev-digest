@@ -70,10 +70,10 @@ don't add another instance.
 | Application code using concrete adapters and `node:fs` | `repo-intel/service.ts:29`, `repo-intel/pipeline/{full,incremental,walk}.ts` | intentional per `server/docs/architecture.md`; don't spread it to other modules |
 | Application code importing a repository | `repo-intel/{index,service}.ts`, `repo-intel/pipeline/{full,incremental,rank,repo-map}.ts` → `repo-intel/repository.ts` | new code declares a port and gets the repository from the composition root |
 | Container ⇄ repo-intel cycle | `platform/container.ts` ⇄ `repo-intel/service.ts` and `pipeline/{full,incremental}.ts` | breaks when repo-intel takes ports instead of the container |
-| Multi-write without a transaction | `repo-intel/repository.ts:247-248,352-366` (index delete + chunked insert). Done right: `reviews/repository/run.repo.ts:87,211`, `agents/repository.ts`, `pulls/repository.ts:230-231` | any write pair you add or change goes in one transaction |
+| Multi-write without a transaction | `repo-intel/repository.ts:247-248,352-366` (index delete + chunked insert). Done right: `reviews/repository/run.repo.ts:88,199`, `agents/repository.ts`, `pulls/repository.ts:230-231` | any write pair you add or change goes in one transaction |
 | Route driving the container | `repo-intel/routes.ts:40,55` (`container.repoIntel.getIndexState`, `container.jobs.enqueue`) | counted by `test/routes-container-ratchet.test.ts`; a new route calls a service |
-| Version arithmetic in a repository | `modules/agents/repository.ts:102`, `:229` (`version + 1`); the decisions are in `agents/domain.ts`, the writes in one transaction | move the next-version rule into `domain.ts` when you change it |
-| Repository returns API DTOs | `reviews/repository/run.repo.ts:46-51` (`listRunsForPull` → `RunSummary`) | fine when the shape is the contract; don't add snake_case ad-hoc shapes |
+| Version arithmetic in a repository | `modules/agents/repository.ts:119`, `:299` (`version + 1`); the decisions are in `agents/domain.ts`, the writes in one transaction | move the next-version rule into `domain.ts` when you change it |
+| Repository returns API DTOs | `reviews/repository/run.repo.ts:47-52` (`listRunsForPull` → `RunSummary`) | fine when the shape is the contract; don't add snake_case ad-hoc shapes |
 
 ## Where other skills disagree with this repo
 

@@ -13,6 +13,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 
 ## What works
 
+- **2026-10-05** — To audit a doc's `file:line` citations long after they were written, compare each cited range at the commit that last wrote the citing line (`git blame --line-porcelain` → `git cat-file blob <commit>:<path>`) with the same range at HEAD: equal means still right, unequal gives the old text to search for. It needs no diff hunks and catches drift from any later commit. On the onion-architecture references it found 9 stale citations among 45, plus a renamed function (`skillsChanged` → `linksChanged`). Bare `:N` cites still need their file resolved by hand. Evidence: `.claude/skills/onion-architecture/references/persistence-and-transactions.md:111`
+
 ## What doesn't work
 
 - **2026-09-28** — Remapping `file:line` citations in docs by script after a code change mis-attributes bare `:N` shorthand: it means whatever file the writer had in mind, not the last one cited — `server/docs/architecture.md` cites `mocks.ts` lines right after a `reviews.it.test.ts` cite, and a sub-bullet inherits its parent's file — so an automated pass shifted correct `mocks.ts` numbers → remap only full-path citations automatically (from `git diff -U0` hunks) and check every bare `:N` near a changed file by hand; a final pass that every cited line exists catches only out-of-range ones. Evidence: `server/docs/architecture.md:79`
@@ -53,6 +55,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — `deepseek/deepseek-v4-flash` on OpenRouter (served by AtlasCloud) reasons before it answers, and its hidden reasoning counts against `max_tokens`: the same conventions prompt cost 4.8K–6.8K completion tokens, of which 2.2K–4.7K were `reasoning_tokens`, for ~2.5K tokens of JSON. Past the cap it ends `finish_reason: length` (the provider throws "output was cut off at the token limit"), still billed. `reasoning: { effort: "low" | "none" }` did not reduce it (4649 / 4716 reasoning tokens) → size `maxTokens` for reasoning + output (conventions: 12000), and measure `usage.completion_tokens_details.reasoning_tokens` before trusting an effort knob. Evidence: `server/src/modules/conventions/constants.ts:30-36`, `reviewer-core/src/llm/openrouter.ts:130-137`
   - **2026-10-04** — Wider than measured: a later live scan took 84 s and 8920 completion tokens (13 of 15 kept), close to the OpenRouter client's 90 s per-attempt timeout; the cap comment moved to `server/src/modules/conventions/constants.ts:30-37`. Evidence: `server/src/modules/conventions/constants.ts:30-37`, `reviewer-core/src/llm/openrouter.ts:57`
 - **2026-10-05** — Running pr-self-review on a long-lived branch against its default base goes far over budget: `module/L02` vs `origin/main` is 703 files and ~180 reviewer tasks, while `max_tasks` is 24, so the plan comes out INCOMPLETE. `select-skills.mjs` diffs the base against the working tree, uncommitted edits included, so `--base HEAD` plus a small uncommitted change in `client/src` and `server/src` gives a mixed diff that routes to both the ui and backend skill groups → check the size first with `node .claude/skills/pr-self-review/scripts/select-skills.mjs --base <ref> --summary` (it only prints). Evidence: `.claude/skills/pr-self-review/routing.json:7`
+- **2026-10-05** — A DevDigest skill file ships as a Claude Code plugin skill unchanged: `claude plugin validate --strict` (CLI 2.1.289) passes a SKILL.md whose frontmatter has DevDigest's `type:` key, and the runtime ignores unknown keys. The same raw file then feeds both `/plugin install` and Skills → Import from URL → keep `name`/`description`/`type` frontmatter in plugin skills; no second copy is needed. Evidence: `plugins/devdigest-review-skills/skills/error-handling-review/SKILL.md:4`, `server/src/modules/skills/domain.ts:150`
 
 ## Recurring errors & fixes
 
@@ -134,6 +137,8 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-04** — Skill URL import + injection gate (contract, parallel server/client/docs agents, citation remap across specs/docs/skills): +1 nuance (What doesn't work)
 - **2026-10-05** — HW2 check against the 53 grading criteria (audit + small client fixes): +1 (Tool & library notes)
 - **2026-10-05** — HW2 #21: push-gate hooks removed, pr-self-review 1.2.0 (manual run only): +1 (Codebase patterns)
+- **2026-10-05** — HW2 URL-import demo: `devdigest-review-skills` 1.0.0 plugin + root marketplace, injected `dependency-hygiene` fixture: +1 (Tool & library notes)
+- **2026-10-05** — onion-architecture references: 9 stale `server/` citations + 1 renamed function fixed in place: +1 (What works)
 
 ## Open questions
 
