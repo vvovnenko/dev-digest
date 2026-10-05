@@ -25,10 +25,21 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const update = useUpdateSkill();
   const [draft, setDraft] = React.useState<SkillDraft>({});
   const [nameTaken, setNameTaken] = React.useState(false);
+  // The draft holds only real changes: a field set back to its saved value
+  // leaves it, so the form follows the cached skill again (the list's toggle).
   const edit =
     <K extends keyof SkillDraft>(key: K) =>
     (value: SkillDraft[K]) =>
-      setDraft((d) => ({ ...d, [key]: value }));
+      setDraft((d) => changedFields(skill, { ...d, [key]: value }));
+
+  // The cached skill changed (the list's toggle, a save, a restore): a draft
+  // field it now matches is no longer a change. Adjusted during render, so the
+  // form never shows a frame of the stale draft.
+  const [draftBase, setDraftBase] = React.useState(skill);
+  if (draftBase !== skill) {
+    setDraftBase(skill);
+    setDraft((d) => changedFields(skill, d));
+  }
 
   const form = mergeDraft(skill, draft);
   const patch = changedFields(skill, draft);

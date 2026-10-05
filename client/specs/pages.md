@@ -111,7 +111,7 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
   (`AgentEditor/AgentEditor.tsx:25-28`).
   `ConfigTab` saves only the fields the user changed, with `PUT /agents/:id` and a success toast; the others
   show the cached agent, so the list's enabled toggle is never undone. Switching provider clears the model
-  and Save waits for a new one. Models come from `GET /providers/:p/models` (`ConfigTab.tsx:28,47-50,64-84`).
+  and Save waits for a new one. Models come from `GET /providers/:p/models` (`ConfigTab.tsx:29,59-62,76-96`).
 - Failed load or missing agent → full-screen "Couldn’t load this agent" (`AgentEditorView.tsx:43-52`). "Add ▾ →
   Create from scratch" goes to `/agents`, not the modal (`:69`); "Run on a PR…" goes to `/` (`:103-105`).
 - **Skills tab** (`AgentEditor/_components/SkillsTab/SkillsTab.tsx`): every workspace skill in one list — the
@@ -167,11 +167,11 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
   `preview`, through `router.replace` (`SkillEditorView/constants.ts:2-4`, `SkillEditorView.tsx:31-37`).
   Failed load or missing skill → full-screen "Could not load this skill" (`:45-54`).
 - **Config** stays mounted while another tab shows (`SkillEditor/SkillEditor.tsx:25-27`): enabled (off and disabled
-  while blocked, `ConfigTab/ConfigTab.tsx:80`), name,
+  while blocked, `ConfigTab/ConfigTab.tsx:91`), name,
   description with a directive hint (the "When to apply" line), type, and the body in a line-numbered editor
   headed `<name>.md`, "unsaved" and "{n} tokens" — `ceil(chars / 4)` of the rendered block
-  (`ConfigTab/ConfigTab.tsx:33-39,100-109`). Save sends only the fields that differ, `PUT /skills/:id`; Cancel
-  drops the draft (`:48-70,111-122`).
+  (`ConfigTab/ConfigTab.tsx:44-50,111-120`). Save sends only the fields that differ, `PUT /skills/:id`; Cancel
+  drops the draft (`:58-80,122-133`).
 - **Preview**: "Rendered as the reviewing agent receives it." and the block `### name` / `When to apply:` /
   body, the same format as the engine (`src/lib/skills.ts:26-30`), with its tokens
   (`PreviewTab/PreviewTab.tsx:13-30`).

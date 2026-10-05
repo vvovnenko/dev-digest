@@ -78,6 +78,33 @@ describe("ConfigTab", () => {
     expect(sentPatch()).not.toHaveProperty("enabled");
   });
 
+  it("follows the list's toggle after Enabled is switched off and back on, and Save doesn't undo it", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(ui(AGENT));
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    await user.click(toggle);
+    await user.click(toggle);
+    // The list's toggle saves enabled: false and the cache hands it down.
+    rerender(ui({ ...AGENT, enabled: false }));
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await user.click(saveButton());
+    expect(sentPatch()).toEqual({});
+    rerender(ui({ ...AGENT, enabled: true }));
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("drops an unsaved Enabled change once the list's toggle saves the same value", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(ui(AGENT));
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    await user.click(toggle);
+    rerender(ui({ ...AGENT, enabled: false }));
+    rerender(ui({ ...AGENT, enabled: true }));
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await user.click(saveButton());
+    expect(sentPatch()).toEqual({});
+  });
+
   it("clears the model when the provider changes and waits for a new one before saving", async () => {
     const user = userEvent.setup();
     render(ui(AGENT));

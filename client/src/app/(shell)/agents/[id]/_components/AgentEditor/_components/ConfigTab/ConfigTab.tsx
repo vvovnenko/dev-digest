@@ -9,6 +9,7 @@ import { useToast } from "@/lib/toast";
 import { toModelOptions } from "@/lib/model-label";
 import { PROVIDER_OPTIONS } from "../../../../../constants";
 import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, STRATEGY_VALUES } from "./constants";
+import { changedFields } from "./helpers";
 import { s } from "./styles";
 
 type ConfigPatch = UpdateAgentInput["patch"];
@@ -27,10 +28,21 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const toast = useToast();
   const update = useUpdateAgent();
   const [draft, setDraft] = React.useState<ConfigPatch>({});
+  // The draft holds only real changes: a field set back to its saved value
+  // leaves it, so the form follows the cached agent again (the list's toggle).
   const edit =
     <K extends keyof ConfigPatch>(key: K) =>
     (value: ConfigPatch[K]) =>
-      setDraft((d) => ({ ...d, [key]: value }));
+      setDraft((d) => changedFields(agent, { ...d, [key]: value }));
+
+  // The cached agent changed (the list's toggle, a save): a draft field it now
+  // matches is no longer a change. Adjusted during render, so the form never
+  // shows a frame of the stale draft.
+  const [draftBase, setDraftBase] = React.useState(agent);
+  if (draftBase !== agent) {
+    setDraftBase(agent);
+    setDraft((d) => changedFields(agent, d));
+  }
 
   const name = draft.name ?? agent.name;
   const description = draft.description ?? agent.description;
@@ -45,7 +57,7 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   // A model belongs to its provider: switching provider clears the model until
   // one is picked (Save waits for it); switching back restores the saved one.
   const changeProvider = (next: Provider) =>
-    setDraft((d) => ({ ...d, provider: next, model: next === agent.provider ? undefined : "" }));
+    setDraft((d) => changedFields(agent, { ...d, provider: next, model: next === agent.provider ? undefined : "" }));
 
   const { data: models } = useProviderModels(provider);
   // Show the price (USD per 1M in/out tokens) in the label when the provider

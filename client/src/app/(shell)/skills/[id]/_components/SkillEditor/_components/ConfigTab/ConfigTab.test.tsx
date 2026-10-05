@@ -103,6 +103,33 @@ describe("ConfigTab (skill)", () => {
     expect(mutate.mock.calls[0]![0]).toEqual({ id: "s1", patch: { enabled: false } });
   });
 
+  it("follows the list's toggle after Enabled is switched off and back on", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(ui());
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    await user.click(toggle);
+    await user.click(toggle);
+    // The list's toggle saves enabled: false and the cache hands it down.
+    rerender(ui({ ...SKILL, enabled: false }));
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(saveButton()).toBeDisabled();
+    rerender(ui({ ...SKILL, enabled: true }));
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("drops an unsaved Enabled change once the list's toggle saves the same value", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(ui());
+    const toggle = screen.getByRole("switch", { name: "Enabled" });
+    await user.click(toggle);
+    expect(saveButton()).toBeEnabled();
+    rerender(ui({ ...SKILL, enabled: false }));
+    expect(saveButton()).toBeDisabled();
+    rerender(ui({ ...SKILL, enabled: true }));
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(saveButton()).toBeDisabled();
+  });
+
   it("marks the name on a 409", async () => {
     const user = userEvent.setup();
     mutate.mockImplementation((_input, opts) => opts.onError(new ApiError("taken", 409, "conflict")));
