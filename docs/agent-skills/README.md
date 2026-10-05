@@ -15,6 +15,10 @@ skill in the UI does not change these files.
 | [`branch-coverage.md`](branch-coverage.md) | rubric | yes | Test Quality Reviewer |
 | [`edge-case-checklist.md`](edge-case-checklist.md) | rubric | yes | Test Quality Reviewer |
 | [`mocking-discipline.md`](mocking-discipline.md) | convention | yes | Test Quality Reviewer |
+| [`api-breaking-change.md`](api-breaking-change.md) | rubric | yes | API Contract Reviewer |
+| [`api-response-schema.md`](api-response-schema.md) | rubric | yes | API Contract Reviewer |
+| [`api-semver-discipline.md`](api-semver-discipline.md) | convention | yes | API Contract Reviewer |
+| [`api-deprecation-policy.md`](api-deprecation-policy.md) | convention | yes | API Contract Reviewer |
 | [`flaky-test-patterns/`](flaky-test-patterns/SKILL.md) | custom | no — import it | — |
 
 ## File format
@@ -51,12 +55,12 @@ disabled skill or link sends nothing.
 
 ## Keeping the seed in sync
 
-`server/src/db/seed-skills.ts` holds the three seeded skills as constants.
+`server/src/db/seed-skills.ts` holds the seven seeded skills as constants.
 `server/test/seed-docs-sync.test.ts` fails when a constant differs from its file
 here, so edit both together. The seed creates a skill only when no skill with that
-name exists in the workspace. It links the three skills to the Test Quality Reviewer
-only in the seed run that creates the agent, so a reseed never relinks a skill you
-removed.
+name exists in the workspace. It links three skills to the Test Quality Reviewer and
+four to the API Contract Reviewer, each set only in the seed run that creates that
+agent, so a reseed never relinks a skill you removed.
 
 ## Practising an import: `flaky-test-patterns`
 

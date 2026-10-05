@@ -11,6 +11,8 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`performance-reviewer.md`](./performance-reviewer.md)
 - [`test-quality-reviewer.md`](./test-quality-reviewer.md) — added in L02; its specific
   checklists live in skills ([`../agent-skills/`](../agent-skills/README.md))
+- [`api-contract-reviewer.md`](./api-contract-reviewer.md) — added in HW2; its specific
+  checklists live in skills too
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the

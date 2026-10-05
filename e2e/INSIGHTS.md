@@ -13,6 +13,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 ## What doesn't work
 
 - **2026-10-04** — Flow 08 passes only on the seeded library: "3 of 3 enabled" divides by every skill in the library (the Skills tab merges all skills with the agent's links), so a dev DB with one extra skill shows "3 of 4 enabled" and the step times out. `npm test` has no flow filter, and flow 09 writes → don't point the runner at a dev DB; run `npm run e2e:hermetic`, or replay one read-only flow's `cmd`s by hand. Evidence: `specs/08-skills-lab.flow.json:21`, `../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:49,153`, `run.ts:74`
+  - **2026-10-05** — The denominator follows the seed too: seeding four API Contract skills (HW2) turned the pill into "3 of 7 enabled", and a plan that touched only seed files missed it until this entry was read → whenever the seed adds or removes a skill, update flow 08's literal and its copies in `specs/flows.md`, `../client/specs/pages.md` and `README.md`. Evidence: `specs/08-skills-lab.flow.json:21`, `../server/src/db/seed-skills.ts:397`
 
 ## Codebase patterns
 
@@ -59,5 +60,6 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-29** — Wave 5 (README example and coverage rows, flows.md drift note): +2 (Doc drift fix notes)
 - **2026-10-03** — L02 Skills Lab (flow 08-skills-lab, review journey renumbered to 09): +1 (Tool & library notes)
 - **2026-10-04** — Delete-confirm modal on skill/agent cards (flows.md citations, live replay of 03/08): +2 (Tool & library notes, What doesn't work) + 1 line-evidence note
+- **2026-10-05** — HW2 API Contract Reviewer seed (agent, 4 skills, PR #484; flow 08 pill 3 of 7): +1 nuance (What doesn't work)
 
 ## Open questions

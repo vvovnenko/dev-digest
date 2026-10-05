@@ -125,3 +125,278 @@ export const TEST_QUALITY_SKILLS: readonly SeedSkill[] = [
   EDGE_CASE_CHECKLIST_SKILL,
   MOCKING_DISCIPLINE_SKILL,
 ];
+
+/*
+ * API Contract Reviewer skills (HW2). Mirrored in `docs/agent-skills/<name>.md` like the
+ * Test Quality ones above; `test/seed-docs-sync.test.ts` checks both sets.
+ */
+
+export const API_BREAKING_CHANGE_SKILL: SeedSkill = {
+  name: 'api-breaking-change',
+  description:
+    "Apply when the diff changes a public API surface — an HTTP route's method or path, its path, query or header parameters, its request body, its status or error codes, or a function, type or constant other packages import. Flag every change after which a request or call that worked before fails or behaves differently.",
+  type: 'rubric',
+  body: `A public contract is everything a caller outside this PR relies on: the routes an
+HTTP client calls, what they accept, the status and error codes the client branches
+on, and the functions, types and constants other packages import. A change is
+breaking when a caller that is not updated in the same release fails, or quietly
+gets a different result.
+
+**Breaking — flag it:**
+- Removing or renaming a route, an HTTP method, a path, query or header parameter, a
+  request field, an enum value the caller sends, or an exported symbol.
+- Adding a required input, making an optional input required, or narrowing what is
+  accepted (a shorter max length, a stricter format, fewer enum values).
+- Changing an input's type, unit or format (\`number\` → \`string\`, cents → dollars,
+  ISO date → epoch seconds).
+- Changing the status code of an existing outcome (\`200\` → \`201\`, \`404\` → \`400\`), an
+  error code callers match on, or the default of an optional input.
+- Changing an exported function's parameter order, arity or return type.
+
+**Check, for each changed route, schema or export:**
+1. Write the contract before and after from the removed and added lines.
+2. Name one request or call that worked before and what it gets now
+   (\`POST /v1/payouts {"amount": 500}\` → 422 "amount_cents is required").
+3. Look for a compatible path in the diff: the old name still accepted, the new input
+   optional with a default, or the change shipped under a new route version (\`/v2\`).
+   A change that keeps such a path is not breaking.
+
+**Report each break:**
+- Cite the added line that changes the contract (the schema field, the route
+  declaration). For a route or field that is only removed, cite the nearest changed
+  line of the same hunk and name what was removed.
+- Give old → new, the caller that breaks, and the compatible alternative.
+- Response-shape changes belong to \`api-response-schema\` when that skill is attached;
+  report each change once.
+
+**Severity:** a break on a public route or export is CRITICAL; a break on a surface
+the diff does not show is public is a WARNING.
+
+**Not a finding:** a new route, a new optional input, wider accepted input, or a
+change to internal code no caller outside the PR can reach.
+
+**Bad** — the request contract changes in place:
+
+\`\`\`ts
+const CreatePayoutBody = z.object({
+  account_id: z.string(),
+  amount_cents: z.number().int().positive(), // was \`amount\`
+  method: z.enum(['standard', 'instant']), // new and required
+});
+\`\`\`
+
+Every client still sending \`{ "account_id": "acct_1", "amount": 500 }\` now gets a 422.
+
+**Good** — the new names arrive without breaking the old request:
+
+\`\`\`ts
+const CreatePayoutBody = z
+  .object({
+    account_id: z.string(),
+    amount: z.number().int().positive().optional(), // deprecated, still accepted
+    amount_cents: z.number().int().positive().optional(),
+    method: z.enum(['standard', 'instant']).default('standard'),
+  })
+  .refine((b) => b.amount !== undefined || b.amount_cents !== undefined, {
+    message: 'amount_cents is required',
+  });
+\`\`\``,
+};
+
+export const API_RESPONSE_SCHEMA_SKILL: SeedSkill = {
+  name: 'api-response-schema',
+  description:
+    "Apply when the diff changes what an endpoint returns — a handler's reply object, a serializer or mapper, a response schema (zod, JSON Schema, OpenAPI) or a response DTO type. Flag removed or renamed fields, changed types, units or formats, fields that become optional or nullable, and new enum values clients may not handle.",
+  type: 'rubric',
+  body: `Clients parse a response with fixed expectations: a typed SDK, a mobile app that
+ships once a month, \`JSON.parse\` followed by arithmetic. A response that changes
+shape breaks them at run time, often silently: a missing field reads as \`undefined\`,
+and a number that became a string still parses.
+
+**Compare the response before and after, field by field:**
+1. A removed or renamed field: every caller reading the old name gets \`undefined\`.
+2. A changed type, unit or format: \`number\` → \`string\`, integer cents → a decimal
+   string, epoch → ISO date, an object → an array, one item → a list.
+3. A field that was always present becoming optional or nullable: a caller that
+   dereferences it crashes on the new \`null\`.
+4. A new value in a response enum: a caller with an exhaustive \`switch\` falls into
+   its error branch.
+5. A changed envelope: a bare array wrapped in \`{ data: [...] }\`, a new pagination
+   wrapper, a different error body.
+6. Where the shape is built: the handler's returned object or \`reply.send(...)\`, a
+   mapper such as \`toDto()\`, and the declared response schema. Check the change in
+   all of them — a schema that still says \`z.number()\` while the handler returns a
+   string is a contract the service no longer keeps.
+
+**Report each change:**
+- Cite the added line of the changed field (for a removed field, the nearest changed
+  line of the same object).
+- Give old → new and what a caller written for the old shape does with the new one
+  (\`total += payout.amount\` builds a string; \`payout.destination_id\` is \`undefined\`).
+- Suggest the additive path: keep the old field and add the new one beside it
+  (\`amount\` stays cents, \`amount_decimal\` is new), or version the response.
+
+**Severity:** a removed, renamed or retyped field on a public endpoint is CRITICAL; a
+field that becomes optional or nullable, a new enum value or a changed envelope is a
+WARNING.
+
+**Not a finding:** a new optional field, or a field added to an object clients
+already treat as open.
+
+**Bad** — the payout response changes shape in place:
+
+\`\`\`ts
+return {
+  id: payout.id,
+  amount: (payout.amountCents / 100).toFixed(2), // was the integer amountCents
+  destination: payout.bankAccountId, // was destination_id
+};
+\`\`\`
+
+A client doing \`total += payout.amount\` now builds a string, and one reading
+\`payout.destination_id\` gets \`undefined\`.
+
+**Good** — the old fields stay, the new one is added beside them:
+
+\`\`\`ts
+return {
+  id: payout.id,
+  amount: payout.amountCents, // unchanged: integer cents
+  amount_decimal: (payout.amountCents / 100).toFixed(2), // new
+  destination_id: payout.bankAccountId, // unchanged
+};
+\`\`\``,
+};
+
+export const API_SEMVER_DISCIPLINE_SKILL: SeedSkill = {
+  name: 'api-semver-discipline',
+  description:
+    'Apply when the diff changes a public API surface, whether or not it also changes a version (package.json version, OpenAPI info.version, an API version constant, a changelog heading). Flag a breaking change released under a minor or patch bump, or with no bump at all.',
+  type: 'convention',
+  body: `A version number is a promise to the people who upgrade: \`MAJOR.MINOR.PATCH\`. A
+client that takes every minor and patch release automatically (\`^2.3.1\`) trusts that
+none of them breaks it.
+
+**Classify every public change in the diff:**
+- MAJOR — any breaking change: a removed or renamed route, field, parameter or
+  export, a changed type or format, a new required input, narrower accepted input,
+  a changed status code for an existing outcome.
+- MINOR — a backwards-compatible addition: a new route, a new optional field or
+  parameter, a deprecation marker on something that still works.
+- PATCH — a fix that keeps the contract.
+
+**Rules:**
+1. The bump must be at least the highest class in the release. One breaking change
+   makes the release MAJOR, whatever else it contains.
+2. Below \`1.0.0\` the minor digit acts as the major one: a break in \`0.4.2\` needs \`0.5.0\`.
+3. A breaking change with no version change at all is the same gap: the release that
+   ships it must be MAJOR.
+4. A MAJOR release lists its breaking changes in the changelog, with a migration note
+   for each.
+5. The way out of a MAJOR bump is to make the change compatible: keep the old name
+   as an alias, make the new input optional, or add the change under a new route
+   version. Name the one that fits.
+
+**Report:** ONE finding per release, not one per breaking change. Cite the version
+line when the diff changes it (\`"version": "2.4.0"\`); otherwise cite the first
+breaking line and say the release needs a major bump. List the breaking changes that
+force it and suggest the right version (\`3.0.0\`) or the compatible alternative. The
+breaks themselves are reported at their own lines by \`api-breaking-change\` and
+\`api-response-schema\`.
+
+**Severity:** a breaking change under a minor, patch or missing bump is a WARNING.
+
+**Not a finding:** a bump larger than the change needs, or a version file the diff
+leaves alone when every change is compatible.
+
+**Bad** — \`1.7.2\` → \`1.8.0\`, while the same diff deletes \`GET /v1/payouts/:id/statement\`:
+
+\`\`\`json
+{
+  "name": "@acme/payouts-api",
+  "version": "1.8.0"
+}
+\`\`\`
+
+Every client on \`^1.7.2\` takes this release automatically and starts getting 404s.
+
+**Good** — the release says what it is:
+
+\`\`\`json
+{
+  "name": "@acme/payouts-api",
+  "version": "2.0.0"
+}
+\`\`\`
+
+with a changelog entry such as \`## 2.0.0 — Breaking: GET /v1/payouts/:id/statement
+removed, use GET /v1/payouts/:id/documents\`. Or the route stays, deprecated, and the
+release ships as \`1.8.0\`.`,
+};
+
+export const API_DEPRECATION_POLICY_SKILL: SeedSkill = {
+  name: 'api-deprecation-policy',
+  description:
+    'Apply when the diff removes or renames a route, field, parameter, enum value or exported symbol, or marks one as deprecated. Flag a removal that skips the deprecation step, and a deprecation that gives clients no marker, replacement or removal date.',
+  type: 'convention',
+  body: `Removing part of a public contract takes two releases, not one. First the old route,
+field or export is deprecated: it keeps working, and clients are told what replaces
+it and when it goes away. Only after that window does a major release remove it.
+
+**A deprecation is complete when it has all of:**
+1. Unchanged behaviour: the deprecated route, field or function still works as before.
+2. A marker a client or a tool can read:
+   - HTTP: a \`Deprecation\` header (RFC 9745), a \`Sunset\` header with the removal
+     date (RFC 8594) and \`Link: <…>; rel="successor-version"\`;
+   - OpenAPI or JSON Schema: \`deprecated: true\`;
+   - TypeScript: a \`/** @deprecated Use … */\` JSDoc on the export or field.
+3. A named replacement.
+4. A removal date or version, and a "Deprecated" line in the changelog.
+
+**Flag:**
+- A public route, field, parameter, enum value or export that the diff removes or
+  renames in one step, with no deprecated predecessor in sight — clients find out
+  from a 404 or an \`undefined\`.
+- A deprecation that lacks the marker, the replacement or the removal date.
+- A deprecated route or field whose behaviour the diff also changes.
+
+**Report each gap:** cite the line of the removal or of the incomplete marker, and
+spell out the deprecation the change needs (the headers or JSDoc, the replacement,
+the date). When the removal is already reported as a breaking change, put this
+deprecation path in that finding's suggestion instead of adding a second finding.
+
+**Severity:** a public surface removed with no deprecation step is a WARNING; a
+deprecation missing its marker, replacement or date is a SUGGESTION.
+
+**Not a finding:** removing something the diff shows was already deprecated, once
+its announced removal date or version is reached.
+
+**Bad** — the statement route disappears in one step:
+
+\`\`\`ts
+export async function payoutRoutes(app: FastifyInstance) {
+  app.get('/v1/payouts/:id', getPayout);
+  // GET /v1/payouts/:id/statement was deleted here; clients learn it from a 404
+}
+\`\`\`
+
+**Good** — the route keeps working and says when it goes and what replaces it:
+
+\`\`\`ts
+app.get<{ Params: { id: string } }>('/v1/payouts/:id/statement', async (req, reply) => {
+  reply
+    .header('Deprecation', '@1790812800') // deprecated since 2026-10-01
+    .header('Sunset', 'Thu, 01 Apr 2027 00:00:00 GMT')
+    .header('Link', '</v1/payouts/' + req.params.id + '/documents>; rel="successor-version"');
+  return getStatement(req.params.id); // unchanged until the sunset date
+});
+\`\`\``,
+};
+
+/** Linked to the API Contract Reviewer, in this prompt order. */
+export const API_CONTRACT_SKILLS: readonly SeedSkill[] = [
+  API_BREAKING_CHANGE_SKILL,
+  API_RESPONSE_SCHEMA_SKILL,
+  API_SEMVER_DISCIPLINE_SKILL,
+  API_DEPRECATION_POLICY_SKILL,
+];

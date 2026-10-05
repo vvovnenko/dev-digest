@@ -4,6 +4,7 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
+import { API_CONTRACT_SKILLS, TEST_QUALITY_SKILLS } from '../src/db/seed-skills.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { PullsRepository } from '../src/modules/pulls/repository.js';
@@ -86,11 +87,9 @@ d('Testcontainers: pg + pgvector', () => {
     expect(agents).toHaveLength(1);
 
     const skills = await db.select().from(t.skills).where(eq(t.skills.workspaceId, workspaceId));
-    expect(skills.map((s) => s.name).sort()).toEqual([
-      'branch-coverage',
-      'edge-case-checklist',
-      'mocking-discipline',
-    ]);
+    expect(skills.map((s) => s.name).sort()).toEqual(
+      [...TEST_QUALITY_SKILLS, ...API_CONTRACT_SKILLS].map((s) => s.name).sort(),
+    );
     expect(skills.every((s) => s.version === 1 && s.source === 'manual' && s.enabled)).toBe(true);
 
     for (const skill of skills) {
@@ -139,6 +138,62 @@ d('Testcontainers: pg + pgvector', () => {
       const parsed = diff.files.find((d) => d.path === f.path);
       expect(parsed?.hunks[0]?.newStart).toBe(1);
       expect(parsed?.hunks[0]?.newLines).toBe(f.additions);
+    }
+  });
+
+  it('seeds the API Contract Reviewer, its four linked skills and PR #484 — once', async () => {
+    const { db } = pg.handle;
+    const { workspaceId } = await seed(db);
+    await seed(db);
+
+    const agents = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'API Contract Reviewer')));
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ provider: 'openrouter', enabled: true, version: 1 });
+
+    const skills = await db.select().from(t.skills).where(eq(t.skills.workspaceId, workspaceId));
+    const links = await db
+      .select()
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agents[0]!.id))
+      .orderBy(t.agentSkills.order);
+    expect(links.map((l) => skills.find((s) => s.id === l.skillId)?.name)).toEqual([
+      'api-breaking-change',
+      'api-response-schema',
+      'api-semver-discipline',
+      'api-deprecation-policy',
+    ]);
+    expect(links.every((l) => l.enabled)).toBe(true);
+
+    const prs = await db
+      .select()
+      .from(t.pullRequests)
+      .where(and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.number, 484)));
+    expect(prs).toHaveLength(1);
+    expect(prs[0]).toMatchObject({ status: 'needs_review', filesCount: 4 });
+    const files = await db.select().from(t.prFiles).where(eq(t.prFiles.prId, prs[0]!.id));
+    expect(files.map((f) => f.path).sort()).toEqual([
+      'CHANGELOG.md',
+      'package.json',
+      'src/api/public/charges.ts',
+      'src/api/public/refunds.ts',
+    ]);
+    expect(prs[0]!.additions).toBe(files.reduce((sum, f) => sum + f.additions, 0));
+    expect(prs[0]!.deletions).toBe(files.reduce((sum, f) => sum + f.deletions, 0));
+    const reviews = await db.select().from(t.reviews).where(eq(t.reviews.prId, prs[0]!.id));
+    expect(reviews).toHaveLength(0);
+
+    // Hand-written hunks: the parser reads exactly the counts in each header, so a
+    // header that undercounts drops added or removed lines, and one that overcounts
+    // covers fewer new-side lines than it declares.
+    const diff = diffFromPatches(files);
+    for (const f of files) {
+      const parsed = diff.files.find((d) => d.path === f.path);
+      expect(parsed, f.path).toMatchObject({ additions: f.additions, deletions: f.deletions });
+      expect(f.additions + f.deletions, f.path).toBeGreaterThan(0);
+      for (const h of parsed!.hunks) expect(h.newLineNumbers, f.path).toHaveLength(h.newLines);
     }
   });
 

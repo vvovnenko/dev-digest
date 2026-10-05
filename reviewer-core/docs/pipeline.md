@@ -107,7 +107,7 @@ and its task line carries only the PR number (`../server/src/modules/reviews/hel
 ## 4. Provider call
 
 The server builds `OpenRouterProvider` (`src/llm/openrouter.ts`) for agents on
-`openrouter` — every seeded agent (`../server/src/db/seed.ts:14-15`) — and its own
+`openrouter` — every seeded agent (`../server/src/db/seed.ts:15-16`) — and its own
 OpenAI/Anthropic classes otherwise (`../server/src/platform/container.ts:254-286`).
 `OpenRouterProvider`:
 

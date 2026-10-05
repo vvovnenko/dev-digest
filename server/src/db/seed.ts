@@ -7,8 +7,9 @@ import {
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
   TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
-import { TEST_QUALITY_SKILLS } from './seed-skills.js';
+import { API_CONTRACT_SKILLS, TEST_QUALITY_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -16,6 +17,8 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 
 /** The L02 agent the seeded skills are linked to. */
 const TEST_QUALITY_AGENT_NAME = 'Test Quality Reviewer';
+/** The HW2 agent the API contract skills are linked to. */
+const API_CONTRACT_AGENT_NAME = 'API Contract Reviewer';
 
 /**
  * Seed the starter's demo data. Idempotent: re-running upserts the default
@@ -24,12 +27,14 @@ const TEST_QUALITY_AGENT_NAME = 'Test Quality Reviewer';
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
  * with a few findings, PR #483 (partial refunds, a happy-path-only test — the
- * L02 skills control experiment, no review), the four built-in agents (General +
- * Security + Performance + Test Quality), all on the default
- * openrouter/deepseek-v4-flash provider+model, and three skills (v1 snapshots)
- * linked to the Test Quality Reviewer.
+ * L02 skills control experiment, no review), PR #484 (refund validation + disputes:
+ * subtle breaks under a minor bump — the HW2 API Contract control experiment,
+ * no review), the five built-in agents (General + Security + Performance + Test
+ * Quality + API Contract), all on the default openrouter/deepseek-v4-flash
+ * provider+model, and seven skills (v1 snapshots): three linked to the Test
+ * Quality Reviewer, four to the API Contract Reviewer.
  *
- * The skills are linked only in the run that creates that agent, so a reseed
+ * Each agent's skills are linked only in the run that creates that agent, so a reseed
  * (`scripts/dev.sh` seeds on every boot) never relinks a skill the user removed.
  *
  * Course lessons populate the other tables (conventions, memory, eval, …) once
@@ -234,7 +239,52 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     });
   }
 
-  // ---- built-in agents (the three starter presets + the L02 Test Quality Reviewer) ----
+  // ---- PR #484 (refund validation + disputes — the HW2 API Contract control experiment) ----
+  // Breaks that read as improvements: narrower request validation, a new success
+  // status, a nullable field and a new enum value in the response, a smaller default
+  // page size, a bare @deprecated and only a minor version bump. Compares an API
+  // Contract review with skills off vs on. Stored patches only (no clone), no review.
+  const [contractPr] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 484)));
+  if (!contractPr) {
+    const files = CONTRACT_PR_FILES.map((f) => ({
+      path: f.path,
+      patch: f.patch.join('\n'),
+      additions: changedLines(f.patch, '+'),
+      deletions: changedLines(f.patch, '-'),
+    }));
+    const [created] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 484,
+        title: 'Harden refund validation and support disputed charges',
+        author: 'lena.berg',
+        branch: 'feat/refund-validation-disputes',
+        base: 'main',
+        headSha: 'd5e6f7a8b9c0',
+        additions: files.reduce((sum, f) => sum + f.additions, 0),
+        deletions: files.reduce((sum, f) => sum + f.deletions, 0),
+        filesCount: files.length,
+        status: 'needs_review',
+        body: 'Validates refund currencies and idempotency keys properly, processes refunds asynchronously, adds the disputed charge status and guest-checkout charges without a customer, and makes charge list pages lighter. Bumps the version to 2.4.0.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values(files.map((f) => ({ prId: created!.id, ...f })));
+
+    await db.insert(t.prCommits).values({
+      prId: created!.id,
+      sha: 'd5e6f7a8b9c0',
+      message: 'Harden refund validation, support disputed charges',
+      author: 'lena.berg',
+    });
+  }
+
+  // ---- built-in agents (3 starter presets + L02 Test Quality + HW2 API Contract) ----
   // Prompt bodies live in ./seed-prompts.ts (mirrored in docs/agent-prompts/*.md).
   const seedAgents: Array<typeof t.agents.$inferInsert> = [
     {
@@ -282,6 +332,18 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: API_CONTRACT_AGENT_NAME,
+      description:
+        'Flags breaking API changes: removed or renamed routes and fields, changed response shapes, version bumps that understate a break, and removals with no deprecation.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   /** Agents inserted by THIS run (name → id); an existing agent is left alone. */
   const createdAgents = new Map<string, string>();
@@ -296,61 +358,68 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     }
   }
 
-  // ---- built-in skills (L02; mirrored in docs/agent-skills/*.md) ----
-  // A skill is created with its v1 snapshot when no skill of that name exists.
-  const skillIds: string[] = [];
-  for (const skill of TEST_QUALITY_SKILLS) {
-    const [existing] = await db
-      .select({ id: t.skills.id })
-      .from(t.skills)
-      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, skill.name)));
-    if (existing) {
-      skillIds.push(existing.id);
-      continue;
-    }
-    const id = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(t.skills)
-        .values({
-          workspaceId,
+  // ---- built-in skills (L02 + HW2; mirrored in docs/agent-skills/*.md) ----
+  /** Each agent's seeded skills, in its prompt order. */
+  const seedSkillSets = [
+    { agentName: TEST_QUALITY_AGENT_NAME, skills: TEST_QUALITY_SKILLS },
+    { agentName: API_CONTRACT_AGENT_NAME, skills: API_CONTRACT_SKILLS },
+  ];
+  for (const { agentName, skills } of seedSkillSets) {
+    // A skill is created with its v1 snapshot when no skill of that name exists.
+    const skillIds: string[] = [];
+    for (const skill of skills) {
+      const [existing] = await db
+        .select({ id: t.skills.id })
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, skill.name)));
+      if (existing) {
+        skillIds.push(existing.id);
+        continue;
+      }
+      const id = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(t.skills)
+          .values({
+            workspaceId,
+            name: skill.name,
+            description: skill.description,
+            type: skill.type,
+            source: 'manual',
+            body: skill.body,
+            enabled: true,
+            version: 1,
+          })
+          .returning({ id: t.skills.id });
+        await tx.insert(t.skillVersions).values({
+          skillId: row!.id,
+          version: 1,
           name: skill.name,
           description: skill.description,
           type: skill.type,
-          source: 'manual',
           body: skill.body,
-          enabled: true,
-          version: 1,
-        })
-        .returning({ id: t.skills.id });
-      await tx.insert(t.skillVersions).values({
-        skillId: row!.id,
-        version: 1,
-        name: skill.name,
-        description: skill.description,
-        type: skill.type,
-        body: skill.body,
-        note: 'Created',
+          note: 'Created',
+        });
+        return row!.id;
       });
-      return row!.id;
-    });
-    skillIds.push(id);
-  }
+      skillIds.push(id);
+    }
 
-  // Link them only when this run created the agent: a reseed must not relink a
-  // skill the user unlinked (or re-enable one they switched off).
-  const testQualityAgentId = createdAgents.get(TEST_QUALITY_AGENT_NAME);
-  if (testQualityAgentId) {
-    await db
-      .insert(t.agentSkills)
-      .values(
-        skillIds.map((skillId, order) => ({
-          agentId: testQualityAgentId,
-          skillId,
-          order,
-          enabled: true,
-        })),
-      )
-      .onConflictDoNothing();
+    // Link them only when this run created the agent: a reseed must not relink a
+    // skill the user unlinked (or re-enable one they switched off).
+    const agentId = createdAgents.get(agentName);
+    if (agentId) {
+      await db
+        .insert(t.agentSkills)
+        .values(
+          skillIds.map((skillId, order) => ({
+            agentId,
+            skillId,
+            order,
+            enabled: true,
+          })),
+        )
+        .onConflictDoNothing();
+    }
   }
 
   return { workspaceId, userId };
@@ -378,6 +447,11 @@ const DEMO_CONFIG_PATCH = [
 /** A new file's patch: one hunk adding every line (`@@ -0,0 +1,N @@`). */
 function newFilePatch(lines: readonly string[]): string {
   return [`@@ -0,0 +1,${lines.length} @@`, ...lines.map((l) => `+${l}`)].join('\n');
+}
+
+/** The number of lines a patch adds (`+`) or removes (`-`); hunk headers start with `@@`. */
+function changedLines(patch: readonly string[], sign: '+' | '-'): number {
+  return patch.filter((l) => l.startsWith(sign)).length;
 }
 
 /**
@@ -473,6 +547,103 @@ const REFUNDS_PR_FILES: ReadonlyArray<{ path: string; lines: readonly string[] }
       '    await result;',
       '  });',
       '});',
+    ],
+  },
+];
+
+/**
+ * PR #484's patches. Each break looks like an improvement: `src/api/public/refunds.ts`
+ * narrows `currency` to upper-case ISO codes and `idempotency_key` to UUIDs and
+ * answers 202 instead of 201; `src/api/public/charges.ts` makes `customer_id`
+ * nullable, adds `disputed` to the `status` enum, marks `refunded` with a bare
+ * `@deprecated` and drops the default page size from 50 to 20; `package.json` and
+ * `CHANGELOG.md` ship it all as a minor release (2.3.1 → 2.4.0) with no breaking notes.
+ */
+const CONTRACT_PR_FILES: ReadonlyArray<{ path: string; patch: readonly string[] }> = [
+  {
+    path: 'src/api/public/refunds.ts',
+    patch: [
+      "@@ -5,17 +5,17 @@ import { refundCharge } from '../../refunds';",
+      ' const CreateRefundBody = z.object({',
+      '   charge_id: z.string(),',
+      '   amount: z.number().int().positive(),',
+      '-  currency: z.string().length(3),',
+      '-  idempotency_key: z.string().min(1),',
+      "+  currency: z.string().regex(/^[A-Z]{3}$/, 'ISO 4217 code, upper case'),",
+      '+  idempotency_key: z.string().uuid(),',
+      ' });',
+      ' ',
+      ' export async function refundsRoutes(app: FastifyInstance) {',
+      "   app.post('/v1/refunds', async (req, reply) => {",
+      '     const body = CreateRefundBody.parse(req.body);',
+      '     const refund = await refundCharge({',
+      '       chargeId: body.charge_id,',
+      '       amountCents: body.amount,',
+      '       currency: body.currency,',
+      '       idempotencyKey: body.idempotency_key,',
+      '     });',
+      '-    return reply.code(201).send({ id: refund.refundId, status: refund.status });',
+      '+    return reply.code(202).send({ id: refund.refundId, status: refund.status });',
+    ],
+  },
+  {
+    path: 'src/api/public/charges.ts',
+    patch: [
+      '@@ -6,20 +6,21 @@ export const Charge = z.object({',
+      '   id: z.string(),',
+      '   amount: z.number().int(),',
+      '   currency: z.string(),',
+      '-  customer_id: z.string(),',
+      "-  status: z.enum(['pending', 'settled', 'failed']),",
+      '+  customer_id: z.string().nullable(),',
+      "+  status: z.enum(['pending', 'settled', 'failed', 'disputed']),",
+      '+  /** @deprecated */',
+      '   refunded: z.boolean(),',
+      ' });',
+      ' ',
+      ' const ListQuery = z.object({',
+      '-  limit: z.coerce.number().int().min(1).max(100).default(50),',
+      '+  limit: z.coerce.number().int().min(1).max(100).default(20),',
+      '   starting_after: z.string().optional(),',
+      ' });',
+      ' ',
+      ' function toCharge(row: ChargeRow): z.infer<typeof Charge> {',
+      '   return {',
+      '     id: row.id,',
+      '     amount: row.amountCents,',
+      '     currency: row.currency,',
+      '-    customer_id: row.customerId,',
+      '+    customer_id: row.customerId ?? null,',
+      '     status: row.status,',
+    ],
+  },
+  {
+    path: 'package.json',
+    patch: [
+      '@@ -1,6 +1,6 @@',
+      ' {',
+      '   "name": "@acme/payments-api",',
+      '-  "version": "2.3.1",',
+      '+  "version": "2.4.0",',
+      '   "description": "Acme payments public API",',
+      '   "type": "module",',
+      '   "main": "dist/server.js",',
+    ],
+  },
+  {
+    path: 'CHANGELOG.md',
+    patch: [
+      '@@ -1,4 +1,10 @@',
+      ' # Changelog',
+      ' ',
+      '+## 2.4.0',
+      '+',
+      '+- Charges can be `disputed`, and guest-checkout charges have no customer.',
+      '+- Refund requests are validated more strictly and processed asynchronously.',
+      '+- Charge lists return 20 items per page by default.',
+      '+',
+      ' ## 2.3.1',
+      ' ',
     ],
   },
 ];

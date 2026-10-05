@@ -117,5 +117,5 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
-| `08-skills-lab` | `/skills` → open `branch-coverage` → Preview tab shows the rendered block ("When to apply:") → Test Quality Reviewer → Skills tab → "3 of 3 enabled" (read-only) |
+| `08-skills-lab` | `/skills` → open `branch-coverage` → Preview tab shows the rendered block ("When to apply:") → Test Quality Reviewer → Skills tab → "3 of 7 enabled" (read-only) |
 | `09-review-journey` | PR #482 → Run Review → live run → fake finding → Accept → run trace (writes; fake LLM) |

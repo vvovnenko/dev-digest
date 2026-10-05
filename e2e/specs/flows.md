@@ -14,26 +14,27 @@ Citations are `path:line`, relative to `e2e/`.
 
 | Data | Value | Flows | Seed |
 | ---- | ----- | ----- | ---- |
-| repo | `acme/payments-api`, the only repo | 01, 02, 04, 05 | `../server/src/db/seed.ts:84-102` |
-| PR | #482 "Add rate limiting to public API endpoints", head `a1b2c3d4e5f6`, no `last_reviewed_sha` | 02, 04, 05 | `../server/src/db/seed.ts:105-128` |
-| `pr_files` | 4 rows, one of them `src/config.ts`, the only one with a patch (4 added lines) | 05, 09 | `../server/src/db/seed.ts:131-136,364-376` |
-| `pr_commits` | 1 commit | — | `../server/src/db/seed.ts:139-144` |
-| review | `request_changes`, score 61, `model: 'seed'`, no agent, no run | 04 | `../server/src/db/seed.ts:147-159` |
-| findings | CRITICAL "Hardcoded Stripe secret key in commit", WARNING "N+1 query in user list endpoint" | 04 | `../server/src/db/seed.ts:161-186` |
-| PR | #483 "Add partial refunds", head `b7c8d9e0f1a2`, 2 `pr_files` with patches (`src/refunds.ts`, `test/refunds.test.ts`), no review — the L02 skills control experiment | — | `../server/src/db/seed.ts:189-235` |
-| agents | General, Security, Performance and Test Quality Reviewer | 03, 08, 09 | `../server/src/db/seed.ts:237-297` |
-| skills | `branch-coverage` (rubric), `edge-case-checklist` (rubric), `mocking-discipline` (convention), each at v1 with a `skill_versions` row | 08 | `../server/src/db/seed.ts:299-337`, `../server/src/db/seed-skills.ts:20,53,88,123` |
-| `agent_skills` | the three skills linked to Test Quality Reviewer in that order, all enabled — only in the seed run that creates the agent | 08 | `../server/src/db/seed.ts:339-354` |
+| repo | `acme/payments-api`, the only repo | 01, 02, 04, 05 | `../server/src/db/seed.ts:89-107` |
+| PR | #482 "Add rate limiting to public API endpoints", head `a1b2c3d4e5f6`, no `last_reviewed_sha` | 02, 04, 05 | `../server/src/db/seed.ts:110-133` |
+| `pr_files` | 4 rows, one of them `src/config.ts`, the only one with a patch (4 added lines) | 05, 09 | `../server/src/db/seed.ts:136-141,433-445` |
+| `pr_commits` | 1 commit | — | `../server/src/db/seed.ts:144-149` |
+| review | `request_changes`, score 61, `model: 'seed'`, no agent, no run | 04 | `../server/src/db/seed.ts:152-164` |
+| findings | CRITICAL "Hardcoded Stripe secret key in commit", WARNING "N+1 query in user list endpoint" | 04 | `../server/src/db/seed.ts:166-191` |
+| PR | #483 "Add partial refunds", head `b7c8d9e0f1a2`, 2 `pr_files` with patches (`src/refunds.ts`, `test/refunds.test.ts`), no review — the L02 skills control experiment | — | `../server/src/db/seed.ts:194-240` |
+| PR | #484 "Harden refund validation and support disputed charges", head `d5e6f7a8b9c0`, 4 `pr_files` with change patches (`src/api/public/refunds.ts`, `src/api/public/charges.ts`, `package.json`, `CHANGELOG.md`), no review — the HW2 API Contract control experiment | — | `../server/src/db/seed.ts:242-285,562-649` |
+| agents | General, Security, Performance, Test Quality and API Contract Reviewer | 03, 08, 09 | `../server/src/db/seed.ts:287-359` |
+| skills | `branch-coverage` (rubric), `edge-case-checklist` (rubric), `mocking-discipline` (convention), plus `api-breaking-change`, `api-response-schema` (rubric), `api-semver-discipline`, `api-deprecation-policy` (convention), each at v1 with a `skill_versions` row | 08 | `../server/src/db/seed.ts:361-405`, `../server/src/db/seed-skills.ts:20,53,88,123,134,206,271,337,397` |
+| `agent_skills` | the three Test Quality skills linked to Test Quality Reviewer and the four API contract skills to API Contract Reviewer, each in that order, all enabled — only in the seed run that creates that agent | 08 | `../server/src/db/seed.ts:407-422` |
 
 - **List status is derived.** The seed puts `'needs_review'` in the merge-state column
-  (`../server/src/db/seed.ts:125`); the list derives `needs_review` from the null `last_reviewed_sha`
+  (`../server/src/db/seed.ts:130`); the list derives `needs_review` from the null `last_reviewed_sha`
   (`../server/src/modules/pulls/domain.ts:128-134`, `:11-14,53-55`).
   The list defaults to `?status=needs_review` (`../client/src/app/(shell)/repos/[repoId]/pulls/_components/PullsListView/PullsListView.tsx:35`,
   `../client/src/app/(shell)/repos/[repoId]/pulls/constants.ts:57`).
-- **No `agent_runs` rows** (`../server/src/db/seed.ts:42-357`), so the accordion header
+- **No `agent_runs` rows** (`../server/src/db/seed.ts:47-426`), so the accordion header
   reads `Agent` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:66`,
   `../client/messages/en/prReview.json:160`).
-- **Review and findings are written only with a new PR #482** (`../server/src/db/seed.ts:110`):
+- **Review and findings are written only with a new PR #482** (`../server/src/db/seed.ts:115`):
   re-seeding a DB that still has the PR does not restore a deleted seeded review.
 
 ## Flows
@@ -56,7 +57,7 @@ Several asserted strings appear twice on a page; the preceding `wait --url` prov
 `open /`, `wait --url /pulls`, then:
 
 - `wait --text` + `find text … click` "Add rate limiting to public API endpoints", the
-  row title, a `<Link>` (`../server/src/db/seed.ts:117`, `../client/src/app/(shell)/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:47-49`).
+  row title, a `<Link>` (`../server/src/db/seed.ts:122`, `../client/src/app/(shell)/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:47-49`).
 - `wait --url /pulls/482`: the link goes to `/repos/<id>/pulls/<number>`; a click elsewhere on
   the row pushes the same URL (`../client/src/app/(shell)/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:35,40`).
 - `networkidle`, then the same title again, now in the detail header
@@ -65,7 +66,7 @@ Several asserted strings appear twice on a page; the preceding `wait --url` prov
 ### 03 — Agents list renders the seeded reviewer agents
 
 `open /agents`, `wait --url /agents`, `networkidle`, `wait --text "Security Reviewer"`:
-the seeded agent (`../server/src/db/seed.ts:253`) in its card
+the seeded agent (`../server/src/db/seed.ts:303`) in its card
 (`../client/src/app/(shell)/agents/_components/AgentCard/AgentCard.tsx:50`; a `<button>` when the
 card opens the agent, as on the list, else a plain `<span>` at `:53`).
 
@@ -141,7 +142,7 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
 
 - `find role button click --name "Open Test Quality Reviewer"`: the AgentCard name button
   (`../client/src/app/(shell)/agents/_components/AgentCard/AgentCard.tsx:43`,
-  `../client/messages/en/agents.json:7`; seed `../server/src/db/seed.ts:275`); the list pushes
+  `../client/messages/en/agents.json:7`; seed `../server/src/db/seed.ts:325`); the list pushes
   `?tab=config` (`../client/src/app/(shell)/agents/_components/AgentsListView/AgentsListView.tsx:91`), so `wait --url tab=config`.
 - `find role button click --name "Skills" --exact`: the editor tab
   (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/constants.ts:13`,
@@ -149,9 +150,9 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
   The sidebar's Skills is a link (`../client/src/vendor/ui/nav.ts:31`, `../client/src/vendor/ui/shell/NavItem.tsx:21`), so `role button` skips it.
 - `wait --url tab=skills`: `?tab=` accepts `config|skills`
   (`../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/constants.ts:2`, set at `../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/AgentEditorView.tsx:34`).
-- `wait --text "3 of 3 enabled"`: the tab's pill, enabled links of all workspace skills
+- `wait --text "3 of 7 enabled"`: the tab's pill, enabled links of all workspace skills
   (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`,
-  `../client/messages/en/agents.json:95`) — the seed's three skills, all linked and enabled.
+  `../client/messages/en/agents.json:95`) — the seed's three Test Quality skills, linked and enabled, out of its seven.
 
 ### 09 — Run a review on PR #482, watch it live, accept its finding and open its trace
 
@@ -196,22 +197,22 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | String / URL fragment | Flows | Lives in |
 | --------------------- | ----- | -------- |
 | `/pulls` | 01, 02, 04, 05, 09 | route `../client/src/app/(shell)/repos/[repoId]/pulls/` (the `(shell)` group adds nothing to the URL); redirect `../client/src/app/(shell)/_components/HomeView/HomeView.tsx:21` |
-| `/pulls/482` | 02, 04, 05, 09 | `../client/src/app/(shell)/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:35` + seed PR number `../server/src/db/seed.ts:116` |
+| `/pulls/482` | 02, 04, 05, 09 | `../client/src/app/(shell)/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx:35` + seed PR number `../server/src/db/seed.ts:121` |
 | `tab=findings`, `tab=diff` | 04, 09 · 05 | hardcoded tab keys, `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:90,95` (parsed by `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/helpers.ts:15`) |
 | `/agents`, `/onboarding`, `/settings/api-keys`, `/settings/models` | 03, 06, 07, 08 | app routes; section keys vendored, `../client/src/vendor/ui/nav.ts:47-48` |
 | `/skills`, `tab=preview` · `tab=config`, `tab=skills` | 08 | route `../client/src/app/(shell)/skills/`; tab keys `../client/src/app/(shell)/skills/[id]/_components/SkillEditorView/constants.ts:2` · `../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/constants.ts:2` |
 | Pull Requests | 01 | messages, `../client/messages/en/prReview.json:81` (also vendored `../client/src/vendor/ui/nav.ts:25`) |
-| Add rate limiting to public API endpoints | 02, 04, 05, 09 | seed, `../server/src/db/seed.ts:117` |
+| Add rate limiting to public API endpoints | 02, 04, 05, 09 | seed, `../server/src/db/seed.ts:122` |
 | Agent runs · Files changed (button names) | 04, 09 · 05 | messages `../client/messages/en/prReview.json:177-178`, used at `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:91,95` |
-| request changes | 04 | seed verdict `../server/src/db/seed.ts:153`, message `../client/messages/en/prReview.json:162` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:69`) |
+| request changes | 04 | seed verdict `../server/src/db/seed.ts:158`, message `../client/messages/en/prReview.json:162` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:69`) |
 | 2 findings | 04 | ICU plural `../client/messages/en/prReview.json:166` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:73`) over the seed's two findings |
-| Hardcoded Stripe secret key in commit | 04 | seed, `../server/src/db/seed.ts:169` |
-| src/config.ts | 05 | seed, `../server/src/db/seed.ts:134` |
-| Security Reviewer | 03 | seed, `../server/src/db/seed.ts:253` |
+| Hardcoded Stripe secret key in commit | 04 | seed, `../server/src/db/seed.ts:174` |
+| src/config.ts | 05 | seed, `../server/src/db/seed.ts:139` |
+| Security Reviewer | 03 | seed, `../server/src/db/seed.ts:303` |
 | branch-coverage · Open branch-coverage (`aria-label`) | 08 | seed `../server/src/db/seed-skills.ts:21`; message `../client/messages/en/skills.json:109` (`../client/src/app/(shell)/skills/_components/SkillCard/SkillCard.tsx:56`) |
 | Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:211`; block format `../client/src/lib/skills.ts:28` (= `../reviewer-core/src/prompt.ts:84`) |
-| Open Test Quality Reviewer (`aria-label`) · Skills (tab button) | 08 | messages `../client/messages/en/agents.json:7,51`; seed name `../server/src/db/seed.ts:18` |
-| 3 of 3 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`) over the seed's three linked skills |
+| Open Test Quality Reviewer (`aria-label`) · Skills (tab button) | 08 | messages `../client/messages/en/agents.json:7,51`; seed name `../server/src/db/seed.ts:19` |
+| 3 of 7 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:155`) over the seed's three linked skills out of its seven |
 | Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:80,82` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
 | Run Review · Run all enabled agents | 09 | messages `../client/messages/en/prReview.json:52,49` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:87,65`) |
 | Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:93`) |
@@ -225,9 +226,9 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 
 - **Read-only against the seed**, except 09 (below). No submit, create, delete or re-run. The accordion's
   delete button (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:94-107`)
-  would remove a review that re-seeding does not restore (`../server/src/db/seed.ts:110`).
+  would remove a review that re-seeding does not restore (`../server/src/db/seed.ts:115`).
 - **No model calls.** 09 runs reviews only because the API answers with the fake LLM; a real
-  one would bill a key. The seeded agents run on OpenRouter (`../server/src/db/seed.ts:14-15`),
+  one would bill a key. The seeded agents run on OpenRouter (`../server/src/db/seed.ts:15-16`),
   and a finished run stores the head SHA as `last_reviewed_sha`
   (`../server/src/modules/reviews/run-executor.ts:301-303`,
   `../server/src/modules/reviews/repository/run.repo.ts:219`,

@@ -43,10 +43,10 @@ gate: one that matches injection patterns is blocked ([05](05-skill-url-import.m
   `.description`, `.type`, `.note`; unique `skills(workspace_id, name)`. No DROP.
   `skills.source` gains `'imported'` (a TS-only enum, no SQL).
 - **Seed** (`src/db/seed.ts`, `src/db/seed-skills.ts`, `src/db/seed-prompts.ts`): the
-  Test Quality Reviewer (`seed.ts:273-284`), three skills with v1 snapshots
-  (`seed.ts:299-337`) linked to it only in the run that creates the agent
-  (`seed.ts:339-354`), and demo PR #483 "Add partial refunds" with stored patches and no
-  review (`seed.ts:189-235`). Canonical copies: `../../docs/agent-skills/*.md`,
+  Test Quality Reviewer (`seed.ts:323-334`), three skills with v1 snapshots
+  (`seed.ts:361-405`) linked to it only in the run that creates the agent
+  (`seed.ts:407-422`), and demo PR #483 "Add partial refunds" with stored patches and no
+  review (`seed.ts:194-240`). Canonical copies: `../../docs/agent-skills/*.md`,
   `../../docs/agent-prompts/test-quality-reviewer.md`.
 - **Engine** (`../../reviewer-core/src/prompt.ts`): `PromptSkill`, `renderSkill`,
   `skillBlocks`, `estimateTokens`; `skill_blocks` in the trace assembly.

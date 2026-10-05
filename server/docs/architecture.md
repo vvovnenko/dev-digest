@@ -140,7 +140,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   `appWith` also overrides `secrets` and `openrouter` (`test/reviews.it.test.ts:126-130`),
   because "run all enabled agents reviews with each enabled agent"
   (`test/reviews.it.test.ts:602-611`) runs the seeded OpenRouter agents
-  (`src/db/seed.ts:14`, `src/platform/container.ts:280`).
+  (`src/db/seed.ts:15`, `src/platform/container.ts:280`).
 
 ## Modules and request context
 
@@ -161,7 +161,7 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   accepts only the known preference keys, so an unknown key is a 422, not a new stored row
   (`src/vendor/shared/contracts/platform.ts:102-103`).
 - `getContext` resolves the user and the workspace (`src/modules/_shared/context.ts:15-24`).
-  `LocalNoAuthProvider` looks up the seeded `you@local` / `default` (`src/db/seed.ts:39-40`,
+  `LocalNoAuthProvider` looks up the seeded `you@local` / `default` (`src/db/seed.ts:44-45`,
   passed in by the container) through its `IdentityStore` port — the workspace repository
   (`src/adapters/auth/local.ts:4-14`, `src/modules/workspace/repository.ts:26-40`) — once,
   and caches them for the process lifetime (`src/adapters/auth/local.ts:23-47`): after a

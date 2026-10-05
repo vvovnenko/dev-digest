@@ -23,6 +23,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-28** — The model can skip line grounding by choosing `kind`: `FULL_FILE_KINDS` (`hook`, `secret_leak`, `phantom`, `lethal_trifecta`) bypass the line check, and `kind` is part of the LLM's structured-output schema — the same line-500 finding was kept as `hook` and dropped as `finding` → force `kind: 'finding'` on LLM output; only scanners may set file-level kinds. Evidence: `src/grounding.ts:16`, `../server/src/vendor/shared/contracts/findings.ts:59`
   - **2026-09-28** — Fixed: file-level kinds skip the line check only with `groundFindings(…, { fileLevelKinds: true })`, which no caller passes; `reviewPullRequest` uses the default, so model output is always line-grounded. Evidence: `src/grounding.ts:71`, `src/review/run.ts:200`
 - **2026-09-28** — `OpenRouterProvider.listModels` fetched `/models` with the raw global `fetch`, so neither the provider's timeout (the SDK's, 90 s) nor an injected `fetch` applied to it — a hanging `/models` hung the model list and the PriceBook refresh. Fixed: it uses the injected fetch with `AbortSignal.timeout(timeoutMs)`; the test proves a hang now fails. Evidence: `src/llm/openrouter.ts:167-169`, `test/openrouter.test.ts:85`
+- **2026-10-05** — A break that is only removed lines can't produce a grounded finding: for a route deleted from the end of a file the model cited the old-file lines (19-24, then 20) while the hunk's new side ended at 17, so grounding dropped it in both runs — even with the prompt and a skill saying "cite the nearest changed line of the same hunk" → when a demo diff must show a removal, keep a changed new-side line inside the same hunk, or expect that finding to vanish. Evidence: `src/grounding.ts:47,90`, `../server/src/adapters/git/diff-parser.ts:76,87`
 
 ## Codebase patterns
 
@@ -47,6 +48,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-09-28** — Wave 2 (listModels timeout): +1 (What doesn't work, fixed)
 - **2026-09-29** — Wave 5 (README names and inputs, pipeline intro): +1 (Doc drift fix note)
 - **2026-10-04** — Conventions scan cut off at 6000 tokens (deepseek reasoning measured; no engine change kept): +1 (Open questions)
+- **2026-10-05** — API Contract control experiment analysis (grounding dropped a pure-deletion finding): +1 (What doesn't work)
 
 ## Open questions
 
