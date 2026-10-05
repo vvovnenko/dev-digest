@@ -4,11 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import type { Skill, SkillVersion } from "@devdigest/shared";
 import messages from "../../../../../../../../../messages/en/skills.json";
+import common from "../../../../../../../../../messages/en/common.json";
 
-const { restore, versions } = vi.hoisted(() => ({ restore: vi.fn(), versions: { data: [] as SkillVersion[] } }));
+const { restore, versions, pending } = vi.hoisted(() => ({
+  restore: vi.fn(),
+  versions: { data: [] as SkillVersion[] },
+  pending: { value: false },
+}));
 vi.mock("@/lib/hooks/skills", () => ({
   useSkillVersions: () => ({ data: versions.data, isLoading: false, isError: false, refetch: vi.fn() }),
-  useRestoreSkillVersion: () => ({ mutate: restore, isPending: false }),
+  useRestoreSkillVersion: () => ({ mutate: restore, isPending: pending.value }),
 }));
 
 import { VersionsTab } from "./VersionsTab";
@@ -16,6 +21,7 @@ import { VersionsTab } from "./VersionsTab";
 afterEach(() => {
   cleanup();
   restore.mockReset();
+  pending.value = false;
   vi.restoreAllMocks();
 });
 
@@ -42,12 +48,12 @@ const version = (v: number, note: string, body: string, description = "Apply to 
   created_at: `2026-09-2${v}T10:00:00Z`,
 });
 
-const renderTab = () =>
-  render(
-    <NextIntlClientProvider locale="en" messages={{ skills: messages }} timeZone="UTC">
-      <VersionsTab skill={SKILL} />
-    </NextIntlClientProvider>,
-  );
+const tab = () => (
+  <NextIntlClientProvider locale="en" messages={{ skills: messages, common }} timeZone="UTC">
+    <VersionsTab skill={SKILL} />
+  </NextIntlClientProvider>
+);
+const renderTab = () => render(tab());
 
 describe("VersionsTab", () => {
   it("lists versions newest first and marks the current one", () => {
@@ -71,13 +77,46 @@ describe("VersionsTab", () => {
     expect(within(dialog).getByText("Description")).toBeInTheDocument();
   });
 
-  it("restores a version after confirming", async () => {
+  it("restores a version after confirming in a modal, then closes it", async () => {
     const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.spyOn(window, "confirm");
+    restore.mockImplementation((_input, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
     versions.data = [version(2, "Edited body", SKILL.body), version(1, "Created", "## Rule")];
     renderTab();
     await user.click(screen.getByRole("button", { name: /Restore/ }));
-    expect(confirm.mock.calls[0]![0]).toContain("Restore v1?");
-    expect(restore).toHaveBeenCalledWith({ id: "s1", version: 1 });
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Restore v1?");
+    expect(dialog).toHaveTextContent("This saves its content as a new version.");
+    expect(restore).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: /Restore/ }));
+    expect(restore).toHaveBeenCalledWith({ id: "s1", version: 1 }, expect.anything());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("Cancel and the ✕ close the modal without restoring", async () => {
+    const user = userEvent.setup();
+    versions.data = [version(2, "Edited body", SKILL.body), version(1, "Created", "## Rule")];
+    renderTab();
+    await user.click(screen.getByRole("button", { name: /Restore/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Restore/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("can't confirm twice while the restore is in flight", async () => {
+    const user = userEvent.setup();
+    versions.data = [version(2, "Edited body", SKILL.body), version(1, "Created", "## Rule")];
+    const { rerender } = renderTab();
+    // The row's Restore is disabled while pending too, so open the modal first.
+    await user.click(screen.getByRole("button", { name: /Restore/ }));
+    pending.value = true;
+    rerender(tab());
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: /Restore/ })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 });

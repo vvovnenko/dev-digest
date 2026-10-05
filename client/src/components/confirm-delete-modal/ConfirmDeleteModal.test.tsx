@@ -49,6 +49,14 @@ describe("ConfirmDeleteModal", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("takes another label for the red button", async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal({ confirmLabel: "Remove" });
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   it("can't be confirmed twice while the delete is in flight", () => {
     renderModal({ pending: true });
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();

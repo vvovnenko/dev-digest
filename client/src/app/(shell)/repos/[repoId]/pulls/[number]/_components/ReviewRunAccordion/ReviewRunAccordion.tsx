@@ -3,13 +3,14 @@
    body holds that run's VerdictBanner summary and its own FindingsPanel. A PR
    can have many runs (different agents / re-runs over time) — each is separate
    and collapsible so older runs don't bury the latest. Open state is owned by
-   FindingsTab (see useOpenRuns). */
+   FindingsTab (see useOpenRuns). Trash asks first in a modal. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge } from "@devdigest/ui";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { RunCostBadge } from "@/components/run-cost-badge";
 import { useDeleteReview } from "@/lib/hooks/reviews";
 import { useDateFormat } from "@/lib/format";
@@ -44,6 +45,7 @@ export function ReviewRunAccordion({
   const t = useTranslations("prReview.accordion");
   const formatWhen = useDateFormat();
   const del = useDeleteReview(prId);
+  const [confirming, setConfirming] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (scrollNonce === 0) return;
@@ -93,11 +95,7 @@ export function ReviewRunAccordion({
         </button>
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm(t("confirmDelete", { agent: review.agent_name ?? t("agentLower") }))) {
-              del.mutate(review.id);
-            }
-          }}
+          onClick={() => setConfirming(true)}
           disabled={del.isPending}
           title={t("delete")}
           aria-label={t("delete")}
@@ -129,6 +127,15 @@ export function ReviewRunAccordion({
             headSha={headSha}
           />
         </div>
+      )}
+      {confirming && (
+        <ConfirmDeleteModal
+          title={t("deleteTitle")}
+          message={t("confirmDelete", { agent: review.agent_name ?? t("agentLower") })}
+          onConfirm={() => del.mutate(review.id, { onSuccess: () => setConfirming(false) })}
+          onClose={() => setConfirming(false)}
+          pending={del.isPending}
+        />
       )}
     </div>
   );

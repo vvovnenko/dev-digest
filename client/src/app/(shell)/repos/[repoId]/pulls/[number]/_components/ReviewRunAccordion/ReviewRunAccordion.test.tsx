@@ -5,26 +5,31 @@
  * (server/specs/02-findings-by-severity.md, Amendment).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord, ReviewRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../../messages/en/prReview.json";
+import common from "../../../../../../../../../messages/en/common.json";
 
+const deleteReview = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/hooks/reviews", () => ({
-  useDeleteReview: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteReview: () => ({ mutate: deleteReview, isPending: false }),
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
   usePendingFindingIds: () => new Set<string>(),
 }));
 
 import { ReviewRunAccordion } from "./ReviewRunAccordion";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  deleteReview.mockReset();
+});
 
 type Props = React.ComponentProps<typeof ReviewRunAccordion>;
 function renderRun(props: Partial<Props> & Pick<Props, "review">) {
   return render(
-    <NextIntlClientProvider locale="en" timeZone="UTC" messages={{ prReview: messages }}>
+    <NextIntlClientProvider locale="en" timeZone="UTC" messages={{ prReview: messages, common }}>
       <ReviewRunAccordion prId="pr-1" open={false} onToggle={vi.fn()} {...props} />
     </NextIntlClientProvider>,
   );
@@ -116,6 +121,30 @@ describe("ReviewRunAccordion — header", () => {
     expect(del).toHaveFocus();
   });
 
+  it("trash asks in a modal: Cancel keeps the run, Delete removes it and closes the modal", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm");
+    deleteReview.mockImplementation((_id, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
+    renderRun({ review: review({}) });
+    const trash = screen.getByRole("button", { name: "Delete this review run" });
+
+    await user.click(trash);
+    let dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Delete review run");
+    expect(dialog).toHaveTextContent('The "Security Reviewer" review run and its findings will be permanently removed.');
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(deleteReview).not.toHaveBeenCalled();
+
+    await user.click(trash);
+    dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(deleteReview).toHaveBeenCalledWith("rev-1", expect.anything());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
   it("scrolls into view once per jump request, then reports it done", () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -124,7 +153,7 @@ describe("ReviewRunAccordion — header", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(onScrolled).toHaveBeenCalledTimes(1);
     rerender(
-      <NextIntlClientProvider locale="en" timeZone="UTC" messages={{ prReview: messages }}>
+      <NextIntlClientProvider locale="en" timeZone="UTC" messages={{ prReview: messages, common }}>
         <ReviewRunAccordion review={review({})} prId="pr-1" open onToggle={vi.fn()} scrollNonce={1} onScrolled={onScrolled} />
       </NextIntlClientProvider>,
     );

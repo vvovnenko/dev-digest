@@ -1,6 +1,7 @@
 /* VersionsTab — the skill's snapshots, newest first. The current one is marked;
    any older one can be diffed against the current skill or restored (restoring
-   saves its content as a new version, so history is never rewritten). */
+   asks first in a modal, then saves its content as a new version, so history is
+   never rewritten). */
 "use client";
 
 import React from "react";
@@ -9,6 +10,7 @@ import { Badge, Button, EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
 import type { Skill, SkillVersion } from "@devdigest/shared";
 import { useRestoreSkillVersion, useSkillVersions } from "@/lib/hooks/skills";
 import { useDateFormat } from "@/lib/format";
+import { RestoreVersionModal } from "./_components/RestoreVersionModal";
 import { VersionDiffModal } from "./_components/VersionDiffModal";
 import { VERSION_DATE } from "./constants";
 import { s } from "./styles";
@@ -19,16 +21,22 @@ export function VersionsTab({ skill }: { skill: Skill }) {
   const { data: versions, isLoading, isError, refetch } = useSkillVersions(skill.id);
   const restore = useRestoreSkillVersion();
   const [diffing, setDiffing] = React.useState<SkillVersion | null>(null);
+  const [restoring, setRestoring] = React.useState<SkillVersion | null>(null);
 
-  const onRestore = (v: SkillVersion) => {
-    if (window.confirm(t("versions.confirmRestore", { version: v.version }))) {
-      restore.mutate({ id: skill.id, version: v.version });
-    }
-  };
+  const onRestore = (v: SkillVersion) =>
+    restore.mutate({ id: skill.id, version: v.version }, { onSuccess: () => setRestoring(null) });
 
   return (
     <div style={s.wrap}>
       {diffing && <VersionDiffModal from={diffing} current={skill} onClose={() => setDiffing(null)} />}
+      {restoring && (
+        <RestoreVersionModal
+          version={restoring.version}
+          onConfirm={() => onRestore(restoring)}
+          onClose={() => setRestoring(null)}
+          pending={restore.isPending}
+        />
+      )}
       <div style={s.header}>
         <h2 style={s.h2}>{t("versions.title")}</h2>
         {versions && <Badge color="var(--text-secondary)">{t("versions.count", { count: versions.length })}</Badge>}
@@ -66,7 +74,7 @@ export function VersionsTab({ skill }: { skill: Skill }) {
                       kind="secondary"
                       size="sm"
                       icon="History"
-                      onClick={() => onRestore(v)}
+                      onClick={() => setRestoring(v)}
                       disabled={restore.isPending}
                     >
                       {t("versions.restore")}

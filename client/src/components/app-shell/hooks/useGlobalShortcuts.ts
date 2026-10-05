@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { NAV, SETTINGS_ITEM, resolveHref } from "@devdigest/ui";
 import { useActiveRepo } from "../../../lib/repo-context";
 import { G_NAV_TIMEOUT_MS } from "../constants";
-import { isTextInput } from "../../../lib/shortcut-guards";
+import { isModalOpen, isTextInput } from "../../../lib/shortcut-guards";
 
 interface GlobalShortcutHandlers {
   onOpenPalette: () => void;
@@ -17,6 +17,8 @@ interface GlobalShortcutHandlers {
  * palette, `?` opens shortcuts help, and `g`-then-key navigates to a section.
  * Listens in the capture phase and stops the chord's second key, so a page
  * shortcut on the same key (`a` = accept a finding) never sees `g a`.
+ * None of them act while a modal drawer or dialog is open (a confirm, a trace);
+ * Cmd/Ctrl+K is still kept from the browser then.
  */
 export function useGlobalShortcuts({ onOpenPalette, onOpenHelp }: GlobalShortcutHandlers): void {
   const router = useRouter();
@@ -26,9 +28,14 @@ export function useGlobalShortcuts({ onOpenPalette, onOpenHelp }: GlobalShortcut
     let gPending = false;
     let gTimer: ReturnType<typeof setTimeout> | undefined;
     const onKey = (e: KeyboardEvent) => {
+      const modal = isModalOpen();
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        onOpenPalette();
+        if (!modal) onOpenPalette();
+        return;
+      }
+      if (modal) {
+        gPending = false;
         return;
       }
       if (isTextInput(e.target)) return;

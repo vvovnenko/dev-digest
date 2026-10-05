@@ -32,7 +32,7 @@ Citations are `path:line`, relative to `e2e/`.
   The list defaults to `?status=needs_review` (`../client/src/app/(shell)/repos/[repoId]/pulls/_components/PullsListView/PullsListView.tsx:35`,
   `../client/src/app/(shell)/repos/[repoId]/pulls/constants.ts:57`).
 - **No `agent_runs` rows** (`../server/src/db/seed.ts:47-426`), so the accordion header
-  reads `Agent` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:66`,
+  reads `Agent` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:68`,
   `../client/messages/en/prReview.json:160`).
 - **Review and findings are written only with a new PR #482** (`../server/src/db/seed.ts:115`):
   re-seeding a DB that still has the PR does not restore a deleted seeded review.
@@ -75,28 +75,28 @@ card opens the agent, as on the list, else a plain `<span>` at `:53`).
 `open /`, `wait --url /pulls`, click the PR title, `wait --url /pulls/482`, `networkidle`, then:
 
 - `find role button click --name "Agent runs"`: the tab label
-  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:91`, `../client/messages/en/prReview.json:177`),
+  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:91`, `../client/messages/en/prReview.json:178`),
   a `<button>` that also holds the findings count (`../client/src/vendor/ui/kit/Tabs.tsx:25-50`).
 - `wait --url tab=findings`: the key goes into `?tab` via `router.replace`
   (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailView/PrDetailView.tsx:37-42`).
 - `wait --text "request changes"`: the accordion badge, one lower-case message per verdict
-  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:69`,
+  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:71`,
   `../client/messages/en/prReview.json:162`); the banner below says "Request changes"
   (`../client/messages/en/prReview.json:24`).
 - `wait --text "2 findings"`: the accordion header, an ICU plural
-  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:73`,
+  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:75`,
   `../client/messages/en/prReview.json:166`); the banner repeats it (`../client/messages/en/prReview.json:27`).
 - `wait --text "Hardcoded Stripe secret key in commit"`: the FindingCard title
   (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:62`);
   no click: the newest review opens when the reviews load (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/useOpenRuns.ts:23-29`,
-  applied at `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:138`).
+  applied at `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:139`).
 
 ### 05 — PR detail Files changed tab renders the seeded diff
 
 Same path to `/pulls/482` as 04, then:
 
 - `find role button click --name "Files changed"`, then `wait --url tab=diff`
-  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:95`, `../client/messages/en/prReview.json:178`).
+  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:95`, `../client/messages/en/prReview.json:179`).
 - `wait --text "src/config.ts"`: the diff viewer's file header
   (`../client/src/components/diff-viewer/FileCard/FileCard.tsx:61`) over `pr.files`
   (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailView/PrDetailView.tsx:109`); without GitHub
@@ -108,9 +108,9 @@ Same path to `/pulls/482` as 04, then:
 `open /onboarding`, `wait --url /onboarding`, then `wait --text "Add a repository"`
 (heading) and `"Repository URL"` (field label), both messages
 (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`,
-`../client/messages/en/shell.json:80,82`). Never submits. The root empty state also says
+`../client/messages/en/shell.json:82,84`). Never submits. The root empty state also says
 "Add a repository" (`../client/src/app/(shell)/_components/HomeView/HomeView.tsx:37`,
-`../client/messages/en/shell.json:65`).
+`../client/messages/en/shell.json:67`).
 
 ### 07 — Settings renders the API Keys and Feature Models sections
 
@@ -173,7 +173,7 @@ vain. Then the path to `/pulls/482?tab=findings` as in 04, and:
   (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:65,87`, `../client/messages/en/prReview.json:49,52`):
   one run per enabled agent, four with the seed.
 - `wait --text "Review in progress"`: the live banner while any run is `running`
-  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:93`, `../client/messages/en/prReview.json:148`). Not
+  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:96`, `../client/messages/en/prReview.json:148`). Not
   "Live review": that `SectionLabel` is CSS-uppercased and `wait --text` matches the rendered
   "LIVE REVIEW". The fake answers after 1.5 s per run, so the banner shows for about 6 s.
 - `wait --text "Fake finding on the first added line"`: a finished run's card; the grounding
@@ -203,9 +203,9 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | `/skills`, `tab=preview` · `tab=config`, `tab=skills` | 08 | route `../client/src/app/(shell)/skills/`; tab keys `../client/src/app/(shell)/skills/[id]/_components/SkillEditorView/constants.ts:2` · `../client/src/app/(shell)/agents/[id]/_components/AgentEditorView/constants.ts:2` |
 | Pull Requests | 01 | messages, `../client/messages/en/prReview.json:81` (also vendored `../client/src/vendor/ui/nav.ts:25`) |
 | Add rate limiting to public API endpoints | 02, 04, 05, 09 | seed, `../server/src/db/seed.ts:122` |
-| Agent runs · Files changed (button names) | 04, 09 · 05 | messages `../client/messages/en/prReview.json:177-178`, used at `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:91,95` |
-| request changes | 04 | seed verdict `../server/src/db/seed.ts:158`, message `../client/messages/en/prReview.json:162` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:69`) |
-| 2 findings | 04 | ICU plural `../client/messages/en/prReview.json:166` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:73`) over the seed's two findings |
+| Agent runs · Files changed (button names) | 04, 09 · 05 | messages `../client/messages/en/prReview.json:178-179`, used at `../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:91,95` |
+| request changes | 04 | seed verdict `../server/src/db/seed.ts:158`, message `../client/messages/en/prReview.json:162` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:71`) |
+| 2 findings | 04 | ICU plural `../client/messages/en/prReview.json:166` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:75`) over the seed's two findings |
 | Hardcoded Stripe secret key in commit | 04 | seed, `../server/src/db/seed.ts:174` |
 | src/config.ts | 05 | seed, `../server/src/db/seed.ts:139` |
 | Security Reviewer | 03 | seed, `../server/src/db/seed.ts:303` |
@@ -213,9 +213,9 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | Rendered as the reviewing agent receives it. · When to apply: | 08 | message `../client/messages/en/skills.json:211`; block format `../client/src/lib/skills.ts:28` (= `../reviewer-core/src/prompt.ts:84`) |
 | Open Test Quality Reviewer (`aria-label`) · Skills (tab button) | 08 | messages `../client/messages/en/agents.json:7,51`; seed name `../server/src/db/seed.ts:19` |
 | 3 of 7 enabled | 08 | ICU message `../client/messages/en/agents.json:95` (`../client/src/app/(shell)/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx:161`) over the seed's three linked skills out of its seven |
-| Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:80,82` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
+| Add a repository · Repository URL | 06 | messages `../client/messages/en/shell.json:82,84` (`../client/src/app/onboarding/_components/AddRepoView/AddRepoView.tsx:58,76`) |
 | Run Review · Run all enabled agents | 09 | messages `../client/messages/en/prReview.json:52,49` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:87,65`) |
-| Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:93`) |
+| Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:96`) |
 | Fake finding on the first added line | 09 | `FAKE_FINDING_TITLE`, `../server/src/adapters/llm/fake.ts:17` |
 | Accept · accepted | 09 | messages `../client/messages/en/prReview.json:6,3` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:112,64`) |
 | Open run trace & logs (`aria-label`) | 09 | message `../client/messages/en/prReview.json:125` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.tsx:230`) |
@@ -225,7 +225,7 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 ## Rules for new flows
 
 - **Read-only against the seed**, except 09 (below). No submit, create, delete or re-run. The accordion's
-  delete button (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:94-107`)
+  delete button (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:96-105`)
   would remove a review that re-seeding does not restore (`../server/src/db/seed.ts:115`).
 - **No model calls.** 09 runs reviews only because the API answers with the fake LLM; a real
   one would bill a key. The seeded agents run on OpenRouter (`../server/src/db/seed.ts:15-16`),

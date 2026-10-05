@@ -1,19 +1,20 @@
 /**
  * FindingsTab keyboard shortcuts across several open review runs: only the run
  * the user opened last listens, so one key press acts once (it used to act in
- * every open run).
+ * every open run). Deleting a run from the Timeline asks in a modal first.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
-import type { FindingRecord, ReviewRecord } from "@devdigest/shared";
+import type { FindingRecord, ReviewRecord, RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../../messages/en/prReview.json";
+import common from "../../../../../../../../../messages/en/common.json";
 
-const mutate = vi.hoisted(() => vi.fn());
+const { mutate, deleteRun } = vi.hoisted(() => ({ mutate: vi.fn(), deleteRun: vi.fn() }));
 vi.mock("@/lib/hooks/reviews", () => ({
   useCancelRun: () => ({ mutate: vi.fn(), isPending: false }),
-  useDeleteRun: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteRun: () => ({ mutate: deleteRun, isPending: false }),
   useDeleteReview: () => ({ mutate: vi.fn(), isPending: false }),
   useRunSettled: () => vi.fn(),
   useFindingAction: () => ({ mutate, isPending: false }),
@@ -26,6 +27,7 @@ import { FindingsTab } from "./FindingsTab";
 afterEach(() => {
   cleanup();
   mutate.mockReset();
+  deleteRun.mockReset();
 });
 
 const finding = (id: string, reviewId: string): FindingRecord => ({
@@ -65,15 +67,34 @@ const review = (id: string, agent: string, findingId: string): ReviewRecord => (
 // Newest first, as the page passes them.
 const REVIEWS = [review("new", "Security", "f-new"), review("old", "Perf", "f-old")];
 
-function renderTab() {
+const RUN: RunSummary = {
+  run_id: "run-new",
+  agent_id: "agent-new",
+  agent_name: "Security",
+  provider: "openrouter",
+  model: "m",
+  status: "done",
+  error: null,
+  duration_ms: 1000,
+  tokens_in: 100,
+  tokens_out: 50,
+  cost_usd: null,
+  findings_count: 1,
+  grounding: "1/1 passed",
+  ran_at: "2026-09-28T10:00:00Z",
+  score: 80,
+  blockers: 0,
+};
+
+function renderTab(prRuns: RunSummary[] = []) {
   return render(
-    <NextIntlClientProvider locale="en" timeZone="UTC" messages={{ prReview: messages }}>
+    <NextIntlClientProvider locale="en" timeZone="UTC" messages={{ prReview: messages, common }}>
       <FindingsTab
         prId="pr1"
         liveRunIds={[]}
         lethalTrifecta={[]}
         reviews={REVIEWS}
-        prRuns={[]}
+        prRuns={prRuns}
         prCommits={[]}
         onOpenTrace={vi.fn()}
       />
@@ -106,5 +127,31 @@ describe("FindingsTab — one run drives the shortcuts", () => {
 
     await user.keyboard("a");
     expect(mutate.mock.calls.map(([arg]) => arg)).toEqual([{ findingId: "f-new", action: "accept" }]);
+  });
+});
+
+describe("FindingsTab — deleting a run from the Timeline", () => {
+  it("asks in a modal that holds the shortcuts; Cancel keeps the run, Delete removes it", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm");
+    deleteRun.mockImplementation((_id, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
+    renderTab([RUN]);
+
+    await user.click(screen.getByRole("button", { name: "Delete run" }));
+    let dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("This run and its logs will be permanently removed from the history.");
+    await user.keyboard("a"); // the open run's `a` must not accept behind the modal
+    expect(mutate).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(deleteRun).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Delete run" }));
+    dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(deleteRun).toHaveBeenCalledWith("run-new", expect.anything());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
   });
 });

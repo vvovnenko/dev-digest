@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { isShortcutFree, isTextInput } from "./shortcut-guards";
+import { isModalOpen, isShortcutFree, isTextInput } from "./shortcut-guards";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -42,5 +42,14 @@ describe("shortcut-guards", () => {
     dialog.setAttribute("aria-modal", "true");
     document.body.append(dialog);
     expect(isShortcutFree(keydown({}))).toBe(false);
+  });
+
+  it("only an aria-modal overlay counts as an open modal", () => {
+    const palette = document.createElement("div");
+    palette.setAttribute("role", "dialog"); // the command palette: a dialog, not modal
+    document.body.append(palette);
+    expect(isModalOpen()).toBe(false);
+    palette.setAttribute("aria-modal", "true");
+    expect(isModalOpen()).toBe(true);
   });
 });

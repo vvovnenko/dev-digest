@@ -1,13 +1,15 @@
 /* FindingsTab — the "Agent runs" tab: live runs (with cancel), the Timeline of
    runs and commits, and one collapsible accordion per review run. It owns which
    runs are open and which one the j/k/a/d shortcuts drive, so exactly one
-   FindingsPanel listens for them however many runs are open. */
+   FindingsPanel listens for them however many runs are open. Deleting a run from
+   the Timeline asks first in a modal. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
+import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useCancelRun, useDeleteRun, useRunSettled } from "@/lib/hooks/reviews";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory";
@@ -41,11 +43,12 @@ export function FindingsTab({
   onOpenTrace,
 }: FindingsTabProps) {
   const t = useTranslations("prReview.findingsTab");
-  const tConfirm = useTranslations("prReview.detail");
+  const tPr = useTranslations("prReview");
   const cancel = useCancelRun(prId);
   const deleteRun = useDeleteRun(prId);
   const onRunSettled = useRunSettled(prId);
   const runs = useOpenRuns(reviews);
+  const [deletingRunId, setDeletingRunId] = React.useState<string | null>(null);
   const reviewRunning = liveRunIds.length > 0;
 
   // Timeline severity chips: each run's findings, taken from the review that run
@@ -118,9 +121,7 @@ export function FindingsTab({
             headSha={headSha}
             onOpenTrace={onOpenTrace}
             onGoToReview={runs.jumpTo}
-            onDelete={(id) => {
-              if (window.confirm(tConfirm("confirmDeleteRun"))) deleteRun.mutate(id);
-            }}
+            onDelete={setDeletingRunId}
           />
         </div>
       )}
@@ -144,6 +145,15 @@ export function FindingsTab({
               headSha={headSha}
             />
           ))}
+      {deletingRunId && (
+        <ConfirmDeleteModal
+          title={tPr("timeline.deleteRun")}
+          message={tPr("detail.confirmDeleteRun")}
+          onConfirm={() => deleteRun.mutate(deletingRunId, { onSuccess: () => setDeletingRunId(null) })}
+          onClose={() => setDeletingRunId(null)}
+          pending={deleteRun.isPending}
+        />
+      )}
     </section>
   );
 }

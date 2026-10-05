@@ -139,7 +139,7 @@
   "detail": {
     "loadErrorTitle": "Couldn't load this pull request",
     "loadErrorBody": "PR #{number} could not be loaded.",
-    "confirmDeleteRun": "Delete this run from history? (its logs are removed too)"
+    "confirmDeleteRun": "This run and its logs will be permanently removed from the history. This cannot be undone."
   },
   "findingsTab": {
     "cancel": "Cancel",
@@ -166,7 +166,8 @@
     "findings": "{count, plural, one {# finding} other {# findings}}",
     "blockers": "{count, plural, =0 {} one { · # blocker} other { · # blockers}}",
     "delete": "Delete this review run",
-    "confirmDelete": "Delete this \"{agent}\" review run and its findings?",
+    "deleteTitle": "Delete review run",
+    "confirmDelete": "The \"{agent}\" review run and its findings will be permanently removed. This cannot be undone.",
     "agentLower": "agent"
   },
   "header": {

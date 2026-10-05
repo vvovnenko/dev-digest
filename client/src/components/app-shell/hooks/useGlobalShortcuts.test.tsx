@@ -1,11 +1,13 @@
 /**
  * Global shortcuts vs page shortcuts: the `g` chord owns its second key, so
  * `g a` (go to Agents) no longer also accepts the focused finding on the PR page.
+ * An open modal (a delete confirm) owns the keyboard: no palette, help or `g` jump behind it.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
+import { Modal } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import messages from "../../../../messages/en/prReview.json";
 
@@ -44,18 +46,22 @@ const FINDING: FindingRecord = {
   dismissed_at: null,
 };
 
-function Page({ onOpenPalette = vi.fn(), onOpenHelp = vi.fn() }) {
+function Page({ onOpenPalette = vi.fn(), onOpenHelp = vi.fn(), modal = false }) {
   useGlobalShortcuts({ onOpenPalette, onOpenHelp });
-  return <FindingsPanel findings={[FINDING]} prId="pr1" />;
-}
-
-function renderPage(props: React.ComponentProps<typeof Page> = {}) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <Page {...props} />
-    </NextIntlClientProvider>,
+  return (
+    <>
+      <FindingsPanel findings={[FINDING]} prId="pr1" />
+      {modal && <Modal title="Delete run" onClose={() => {}} />}
+    </>
   );
 }
+
+const tree = (props: React.ComponentProps<typeof Page> = {}) => (
+  <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+    <Page {...props} />
+  </NextIntlClientProvider>
+);
+const renderPage = (props: React.ComponentProps<typeof Page> = {}) => render(tree(props));
 
 describe("useGlobalShortcuts", () => {
   it("`g a` goes to Agents and does not accept the focused finding", async () => {
@@ -87,5 +93,29 @@ describe("useGlobalShortcuts", () => {
     await user.keyboard("?");
     expect(onOpenPalette).toHaveBeenCalledTimes(2);
     expect(onOpenHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("an open modal blocks the palette, help and `g` jumps, and ⌘K still skips the browser", async () => {
+    const user = userEvent.setup();
+    const onOpenPalette = vi.fn();
+    const onOpenHelp = vi.fn();
+    const { rerender } = renderPage({ onOpenPalette, onOpenHelp, modal: true });
+    const cmdK = new KeyboardEvent("keydown", { key: "k", metaKey: true, cancelable: true });
+    window.dispatchEvent(cmdK);
+    expect(cmdK.defaultPrevented).toBe(true);
+    await user.keyboard("?");
+    await user.keyboard("ga");
+    expect(onOpenPalette).not.toHaveBeenCalled();
+    expect(onOpenHelp).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled(); // the panel's `a` waits too
+
+    rerender(tree({ onOpenPalette, onOpenHelp, modal: false }));
+    await user.keyboard("{Meta>}k{/Meta}");
+    await user.keyboard("?");
+    await user.keyboard("ga");
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+    expect(onOpenHelp).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/agents");
   });
 });

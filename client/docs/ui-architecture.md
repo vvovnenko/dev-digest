@@ -18,7 +18,7 @@ to `client/`; `[number]/` = `src/app/(shell)/repos/[repoId]/pulls/[number]/` (th
   the client `AppShell` once (`src/app/(shell)/layout.tsx:7-9`), so the frame, the command palette and the
   shortcut listeners survive navigation. The group adds nothing to the URL.
 - **Every `page.tsx` is a thin Server file.** It exports `generateMetadata`, whose title comes from
-  `shell.titles` (`messages/en/shell.json:46-59`; e.g. `src/app/(shell)/repos/[repoId]/pulls/[number]/page.tsx:7-10`
+  `shell.titles` (`messages/en/shell.json:48-61`; e.g. `src/app/(shell)/repos/[repoId]/pulls/[number]/page.tsx:7-10`
   → "PR #482 · DevDigest"), and renders one client view: `HomeView`, `AgentsListView`, `AgentEditorView`,
   `SkillsListView`, `SkillEditorView`, `SettingsView`, `PullsListView`, `PrDetailView`, `AddRepoView` (each `<Name>View.tsx` starts with
   `"use client"`).
@@ -99,14 +99,14 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
   silent through `meta.silent`, `src/lib/providers.tsx:41-46`). `usePulls` polls only with `poll: true`
   (`core.ts:103-120`): the PR list page asks for it
   (`PullsListView.tsx:28`), the sidebar's needs-review badge only on `/repos/*` paths
-  (`src/components/app-shell/hooks/useShellContext.ts:28-30,75-77`); elsewhere the badge refreshes on focus
+  (`src/components/app-shell/hooks/useShellContext.ts:28-30,55-57`); elsewhere the badge refreshes on focus
   and navigation. The PR page reads the same cached list to turn `:number` into the PR's uuid
   (`[number]/usePrDetail.ts:13-14`).
 - **Mutation hooks invalidate what they change; pages don't.** A started review invalidates `prKeys.all`
   (`reviews.ts:133`), so its runs show up in the run history at once and the 4 s poll starts. When the live
   streams end, `useRunSettled` refreshes the PR's data, every run trace and every PR list, so the list's
   SCORE, FINDINGS, COST and status catch up without waiting for a poll (`reviews.ts:51-58`, called from
-  `FindingsTab.tsx:47,86`). A cancel refreshes the run history (`reviews.ts:76`).
+  `FindingsTab.tsx:49,89`). A cancel refreshes the run history (`reviews.ts:76`).
 - **Live runs come from the run history.** The ids of the PR's `running` runs are derived from `usePrRuns`
   (`[number]/helpers.ts:5-7`, `usePrDetail.ts:30`); the client no longer calls `GET /pulls/:id/runs/active`.
 - **Accept / Reject is optimistic.** `useFindingAction(prId)` patches the cached reviews in `onMutate`, rolls
@@ -133,7 +133,7 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
 - **`RunTraceDrawer`** subscribes only when its `running` prop is true (`RunTraceDrawer.tsx:49-53`).
   `running` is required: the view passes whether the run is live and keys the drawer by run id
   (`PrDetailView.tsx:113-122`). A live run — e.g. from Live review's "Open run trace"
-  (`FindingsTab.tsx:78`) — opens on the Live log and is labelled "running" (`RunTraceDrawer.tsx:71`); when it
+  (`FindingsTab.tsx:81`) — opens on the Live log and is labelled "running" (`RunTraceDrawer.tsx:71`); when it
   finishes, `useRunSettled` invalidates every trace, so the Trace tab refetches. If the trace returns 404
   (`../server/src/modules/reviews/routes.ts:191-196`), the drawer shows "No trace available yet."
   (`RunTraceDrawer.tsx:102-104`); a 4xx raises no toast.
@@ -182,27 +182,30 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
 ## App shell, active repo, shortcuts
 
 - **`AppShell`** combines the vendored `AppFrame`, `CommandPalette` and `ShortcutsHelp` and owns the
-  breadcrumb state (`src/components/app-shell/AppShell.tsx:13-35`). The `(shell)` layout mounts it once; a
+  breadcrumb state (`src/components/app-shell/AppShell.tsx:16-50`). The `(shell)` layout mounts it once; a
   page shows its breadcrumb with `useShellCrumb(crumb)`, which compares by value, updates in a layout effect
   and clears on unmount (`hooks/useShellCrumb.ts:17-25`). `/onboarding` has no shell: `AddRepoView` draws a
   full-screen card.
-- **Shell context** (`useShellContext.ts:22-93`) supplies the active nav key from the path
-  (`helpers.ts:26-40`), the repo switcher (select, add, remove with a confirm; `useShellContext.ts:33-60`),
+- **Shell context** (`useShellContext.ts:23-73`) supplies the active nav key from the path
+  (`helpers.ts:26-40`), the repo switcher (select and add, `useShellContext.ts:32-40`; remove only requests: `useRemoveRepo` holds
+  the target and `AppShell` shows a confirm modal, `hooks/useRemoveRepo.ts:13-44`, `AppShell.tsx:28-29,38-47`),
   the theme toggle and the needs-review badge. The **command palette** offers "Go to …" for each nav
   item, plus Settings and the theme toggle (`useShellCommands.ts:20-47`).
 - **Active repo.** `RepoProvider` picks it in this order: the `/repos/:id` path, then
   `localStorage["dd-repo"]`, then the first repo (`src/lib/repo-context.tsx:47-48`). `useRepoNotFound`
   turns true only after repos have loaded and the id matches none of them (`repo-context.tsx:69-72`).
 - **Shortcuts.** Cmd/Ctrl+K opens the palette and `?` opens help; both ignore text inputs
-  (`useGlobalShortcuts.ts:29-38`). `g` then `p` / `s` / `a` / `,` navigates if the second key comes within
-  1200 ms (`useGlobalShortcuts.ts:39-52`, `constants.ts:4`, `src/vendor/ui/nav.ts:25,31-32,43`); the handler
+  (`useGlobalShortcuts.ts:32-45`). `g` then `p` / `s` / `a` / `,` navigates if the second key comes within
+  1200 ms (`useGlobalShortcuts.ts:46-59`, `constants.ts:4`, `src/vendor/ui/nav.ts:25,31-32,43`); the handler
   listens in the capture phase and stops the second key, so `g a` never reaches a page shortcut
-  (`useGlobalShortcuts.ts:45-48,54`).
+  (`useGlobalShortcuts.ts:52-55,61`). None of them act while a modal drawer or dialog (`aria-modal`: a confirm,
+  a trace) is open, and Cmd/Ctrl+K is still kept from the browser then (`useGlobalShortcuts.ts:31-40`,
+  `src/lib/shortcut-guards.ts:16-19`).
 - **Finding shortcuts** `j`/`k`/`a`/`d` act only on a plain key press — no Cmd/Ctrl/Alt, not in a text field,
-  no modal drawer or dialog open — and a held `a`/`d` fires once (`src/lib/shortcut-guards.ts:21-30`,
+  no modal drawer or dialog open — and a held `a`/`d` fires once (`src/lib/shortcut-guards.ts:16-19,26-35`,
   `FindingsPanel.tsx:54-69`). With several Review runs open, only one panel listens: `FindingsTab` owns
   which runs are open and which one drives the keys — the last one opened, or a run that just finished
-  (`PR/FindingsTab/useOpenRuns.ts:23-47`, `FindingsTab.tsx:138-142`).
+  (`PR/FindingsTab/useOpenRuns.ts:23-47`, `FindingsTab.tsx:139-143`).
 
 ## Known pitfalls
 
