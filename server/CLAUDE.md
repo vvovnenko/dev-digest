@@ -3,7 +3,7 @@
 Fastify 5 API + Drizzle/Postgres on :3001. **pnpm**.
 
 Stack: TypeScript 5.7 (ESM) · Fastify 5 + cors/helmet/rate-limit, fastify-type-provider-zod,
-fastify-sse-v2 · Drizzle ORM 0.38 + postgres 3 (Postgres 16 + pgvector) · Zod 3 · openai 4 ·
+fastify-sse-v2 · Drizzle ORM 0.45 + postgres 3 (Postgres 16 + pgvector) · Zod 3 · openai 4 ·
 @anthropic-ai/sdk · octokit 4 · simple-git · @ast-grep/napi · p-queue · Vitest 2 + Testcontainers.
 
 ## Commands
@@ -15,6 +15,8 @@ pnpm exec vitest run --exclude '**/*.it.test.ts'  # hermetic units only
 pnpm exec vitest run .it.test                     # DB-backed only (Docker)
 pnpm db:generate && pnpm db:migrate               # schema change → migration → apply
 pnpm db:seed                                      # idempotent demo data
+pnpm arch                                         # onion layer boundaries (dependency-cruiser)
+pnpm test:unit | test:it | lint | coverage        # a vitest.workspace.ts project · eslint · v8 report
 ```
 
 ## Conventions
@@ -30,6 +32,11 @@ pnpm db:seed                                      # idempotent demo data
   module's folder.
 - External I/O goes through adapters in `src/platform/container.ts`; tests swap
   them via `ContainerOverrides` + `src/adapters/mocks.ts`.
+- A route builds its service once from container getters and then only calls it;
+  `test/routes-container-ratchet.test.ts` fails on `container.db` or `container.x.y(` in routes.
+- Layers follow the `onion-architecture` skill (`domain.ts` ← `ports.ts` ← `service.ts`
+  ← `routes.ts` / `repository.ts`); a new service takes ports, not the `Container`.
+  `pnpm arch` fails on a new boundary violation: fix the import, never grow the baseline.
 - Throw `AppError` subclasses (`src/platform/errors.ts`). Validation errors are
   **422**; every error body is `{ error: { code, message, details } }`.
 - New table: add it in `src/db/schema/*.ts` **and** to the `schema` object in
@@ -56,7 +63,11 @@ pnpm db:seed                                      # idempotent demo data
 - Boots with no API keys; a missing key surfaces on first use as a 500
   `config_error`.
 - On boot every `running` agent run is marked `failed` (single-instance assumption).
+- Boot also fails `queued`/`running` jobs; `app.close()` ends open run streams and records
+  running reviews as failed (shutdown), so a test that closes its app mid-run sees `failed`.
 - Many tables have no writer yet — pre-staged for later lessons, not bugs.
+- `DEVDIGEST_FAKE_LLM=1` answers every review with `src/adapters/llm/fake.ts` (e2e, no key);
+  `loadConfig` refuses it under `NODE_ENV=production`.
 
 ## Do not touch
 
@@ -74,6 +85,8 @@ pnpm db:seed                                      # idempotent demo data
 - Read [`docs/`](docs/README.md) before changing the run lifecycle, DI or secrets.
 - Read [`docs/architecture.md`](docs/architecture.md) before adding an adapter or changing the
   container, boot order, error model or secrets.
+- Use the `onion-architecture` skill before adding a module, service, repository, port or
+  adapter, moving logic between layers, or when `pnpm arch` fails.
 - Read [`specs/review-flow.md`](specs/review-flow.md) before changing how a review run starts,
   is persisted, streamed, cancelled or deleted.
 - Read [`README.md`](README.md) (API map, DI flow, env) when adding or changing a route.

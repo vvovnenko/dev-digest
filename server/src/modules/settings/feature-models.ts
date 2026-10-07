@@ -1,12 +1,10 @@
-import { eq } from 'drizzle-orm';
 import {
   FEATURE_MODELS,
   FeatureModelChoice,
   type FeatureModelId,
 } from '@devdigest/shared';
-import type { Container } from '../../platform/container.js';
-import * as t from '../../db/schema.js';
 import { rowsToSettings } from './helpers.js';
+import type { SettingsStore } from './ports.js';
 
 /**
  * Per-feature model configuration.
@@ -16,6 +14,9 @@ import { rowsToSettings } from './helpers.js';
  * module constant. When the workspace hasn't chosen one, we fall back to the
  * registry default in `FEATURE_MODELS` — which mirrors each module's old
  * constant, so behaviour is unchanged until a model is explicitly picked.
+ *
+ * Callers pass the settings store: `container.featureModel(ws, id)` wraps
+ * `resolveFeatureModel` with `container.settingsRepo` (conventions uses it).
  */
 
 const DEFAULTS = Object.fromEntries(
@@ -28,20 +29,17 @@ export function defaultFeatureModel(id: FeatureModelId): FeatureModelChoice {
 }
 
 /**
- * The workspace's override for `id`, or `undefined` when unset/invalid. Callers
- * that keep their own dynamic default (e.g. conventions) use this directly so
- * that default is preserved; callers with a static default use
+ * The workspace's override for `id`, or `undefined` when unset/invalid. A caller
+ * that keeps a dynamic default of its own uses this directly so that default is
+ * preserved; callers with the registry default (conventions included) use
  * `resolveFeatureModel` instead.
  */
 export async function getFeatureModelOverride(
-  container: Container,
+  settings: Pick<SettingsStore, 'list'>,
   workspaceId: string,
   id: FeatureModelId,
 ): Promise<FeatureModelChoice | undefined> {
-  const rows = await container.db
-    .select({ key: t.settings.key, value: t.settings.value })
-    .from(t.settings)
-    .where(eq(t.settings.workspaceId, workspaceId));
+  const rows = await settings.list(workspaceId);
   const fm = (rowsToSettings(rows) as { feature_models?: Record<string, unknown> }).feature_models;
   const parsed = FeatureModelChoice.safeParse(fm?.[id]);
   return parsed.success ? parsed.data : undefined;
@@ -49,9 +47,9 @@ export async function getFeatureModelOverride(
 
 /** Resolve `id` to a concrete provider+model: workspace override, else registry default. */
 export async function resolveFeatureModel(
-  container: Container,
+  settings: Pick<SettingsStore, 'list'>,
   workspaceId: string,
   id: FeatureModelId,
 ): Promise<FeatureModelChoice> {
-  return (await getFeatureModelOverride(container, workspaceId, id)) ?? DEFAULTS[id];
+  return (await getFeatureModelOverride(settings, workspaceId, id)) ?? DEFAULTS[id];
 }

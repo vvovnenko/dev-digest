@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, integer, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, uuid, text, integer, timestamp, uniqueIndex, index, check } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { repos } from './repos';
 
@@ -30,6 +31,8 @@ export const pullRequests = pgTable(
   (t) => ({
     uq: uniqueIndex('pr_repo_number_uq').on(t.repoId, t.number), // idempotent import
     wsIdx: index('pr_ws_idx').on(t.workspaceId),
+    // GitHub states plus the seed's needs_review.
+    statusCk: check('pr_status_ck', sql`${t.status} in ('open', 'merged', 'closed', 'needs_review')`),
   }),
 );
 
@@ -42,7 +45,11 @@ export const prFiles = pgTable('pr_files', {
   additions: integer('additions').notNull().default(0),
   deletions: integer('deletions').notNull().default(0),
   patch: text('patch'),
-});
+}, (t) => ({
+  // One row per path: a detail refresh replaces them, and two concurrent
+  // refreshes must not duplicate a file's hunks in the reviewed diff.
+  prPathUq: uniqueIndex('pr_files_pr_path_uq').on(t.prId, t.path),
+}));
 
 export const prCommits = pgTable('pr_commits', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -53,4 +60,6 @@ export const prCommits = pgTable('pr_commits', {
   message: text('message').notNull(),
   author: text('author').notNull(),
   committedAt: timestamp('committed_at', { withTimezone: true }),
-});
+}, (t) => ({
+  prShaUq: uniqueIndex('pr_commits_pr_sha_uq').on(t.prId, t.sha),
+}));

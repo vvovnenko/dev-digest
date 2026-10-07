@@ -8,7 +8,6 @@ import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
-import type { Container } from '../src/platform/container.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -164,15 +163,214 @@ d('GET /agents/:id/versions', () => {
       systemPrompt: 'x',
     });
 
-    const service = new AgentsService({ db } as unknown as Container);
-    const [{ id: defaultWs }] = await db
+    const service = new AgentsService({
+      agents: repo,
+      llm: async () => {
+        throw new Error('unused');
+      },
+    });
+    const [defaultWsRow] = await db
       .select({ id: t.workspaces.id })
       .from(t.workspaces)
       .where(eq(t.workspaces.name, 'default'));
+    const defaultWs = defaultWsRow!.id;
 
     // Owner can read; a different workspace is denied (undefined → 404 at route).
     expect(await service.listVersions(otherWs!.id, foreign.id)).toHaveLength(1);
-    expect(await service.listVersions(defaultWs!, foreign.id)).toBeUndefined();
-    expect(await service.getVersion(defaultWs!, foreign.id, 1)).toBeUndefined();
+    expect(await service.listVersions(defaultWs, foreign.id)).toBeUndefined();
+    expect(await service.getVersion(defaultWs, foreign.id, 1)).toBeUndefined();
+  });
+
+  describe('versioning under concurrency and skill changes', () => {
+    const newSkill = async (name: string) => {
+      const { db } = pg.handle;
+      const [ws] = await db.select().from(t.workspaces).where(eq(t.workspaces.name, 'default'));
+      const [skill] = await db
+        .insert(t.skills)
+        .values({ workspaceId: ws!.id, name, description: 'd', type: 'rubric', source: 'manual', body: 'b' })
+        .returning();
+      return skill!.id;
+    };
+    const versionsOf = async (app: Awaited<ReturnType<typeof makeApp>>, agentId: string) =>
+      (await app.inject({ method: 'GET', url: `/agents/${agentId}/versions` })).json() as {
+        version: number;
+        config: { skills?: string[]; skill_links?: { skill_id: string; enabled: boolean }[]; model: string };
+      }[];
+
+    it('two concurrent config edits get two versions, each with its own snapshot', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+
+      await Promise.all(
+        ['model-a', 'model-b'].map((model) =>
+          app.inject({ method: 'PUT', url: `/agents/${agentId}`, payload: { model } }),
+        ),
+      );
+
+      const versions = await versionsOf(app, agentId);
+      expect(versions.map((v) => v.version)).toEqual([3, 2, 1]);
+      expect(new Set(versions.slice(0, 2).map((v) => v.config.model))).toEqual(new Set(['model-a', 'model-b']));
+      await app.close();
+    });
+
+    it('changing skills creates a version whose snapshot lists them; the same list again does not', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const [s1, s2] = [await newSkill('Rubric A'), await newSkill('Rubric B')];
+      const post = (payload: object) => app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload });
+
+      expect((await post({ skill_ids: [s1, s2] })).statusCode).toBe(200);
+      let versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({ version: 2, config: { skills: [s1, s2] } });
+
+      await post({ skill_ids: [s1, s2] });
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(2);
+
+      // Moving a skill changes the order → a new version.
+      await post({ skill_id: s1, order: 1 });
+      versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({ version: 3, config: { skills: [s2, s1] } });
+      await app.close();
+    });
+
+    it('a failed skills update leaves the previous skills and version untouched', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const s1 = await newSkill('Rubric C');
+      await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload: { skill_ids: [s1] } });
+
+      // The service refuses an unknown skill up front; the repository's own
+      // transaction must still roll back if an insert fails inside it.
+      const unknown = '00000000-0000-4000-8000-000000000000';
+      const [ws] = await pg.handle.db
+        .select({ id: t.workspaces.id })
+        .from(t.workspaces)
+        .where(eq(t.workspaces.name, 'default'));
+      await expect(
+        new AgentsRepository(pg.handle.db).replaceSkills(ws!.id, agentId, () => [
+          { skillId: s1, enabled: true },
+          { skillId: unknown, enabled: true },
+        ]),
+      ).rejects.toThrow();
+
+      const links = (await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json() as { skill_id: string }[];
+      expect(links.map((l) => l.skill_id)).toEqual([s1]);
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(2);
+      await app.close();
+    });
+
+    it('links carry a per-agent flag: order and flags are versioned, only enabled ids reach `skills`', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const [a, b, c] = [await newSkill('links-a'), await newSkill('links-b'), await newSkill('links-c')];
+      const post = (payload: object) => app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload });
+
+      const res = await post({
+        links: [
+          { skill_id: c, enabled: true },
+          { skill_id: a, enabled: false },
+          { skill_id: b, enabled: true },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual([
+        { agent_id: agentId, skill_id: c, order: 0, enabled: true },
+        { agent_id: agentId, skill_id: a, order: 1, enabled: false },
+        { agent_id: agentId, skill_id: b, order: 2, enabled: true },
+      ]);
+      let versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({
+        version: 2,
+        config: {
+          skills: [c, b],
+          skill_links: [
+            { skill_id: c, enabled: true },
+            { skill_id: a, enabled: false },
+            { skill_id: b, enabled: true },
+          ],
+        },
+      });
+
+      // The card count = enabled links, on the list and on the agent.
+      const listed = (await app.inject({ method: 'GET', url: '/agents' })).json() as { id: string; skill_count: number }[];
+      expect(listed.find((x) => x.id === agentId)!.skill_count).toBe(2);
+      expect((await app.inject({ method: 'GET', url: `/agents/${agentId}` })).json().skill_count).toBe(2);
+
+      // Flipping one flag is a change → a new version.
+      await post({
+        links: [
+          { skill_id: c, enabled: true },
+          { skill_id: a, enabled: true },
+          { skill_id: b, enabled: true },
+        ],
+      });
+      versions = await versionsOf(app, agentId);
+      expect(versions[0]).toMatchObject({ version: 3, config: { skills: [c, a, b] } });
+
+      // Linking one that is already linked (disabled) keeps its flag.
+      await post({ links: [{ skill_id: a, enabled: false }] });
+      await post({ skill_id: a, order: 0 });
+      expect((await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json()).toEqual([
+        { agent_id: agentId, skill_id: a, order: 0, enabled: false },
+      ]);
+      await app.close();
+    });
+
+    it('a skill listed twice in links is a 422 and changes nothing', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const a = await newSkill('dup-a');
+      const res = await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills`,
+        payload: { links: [{ skill_id: a, enabled: true }, { skill_id: a, enabled: false }] },
+      });
+      expect(res.statusCode).toBe(422);
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(1);
+      await app.close();
+    });
+
+    it('a skill from another workspace, or no skill at all, is a 404 and changes nothing', async () => {
+      const app = await makeApp();
+      const agentId = (await app.inject({ method: 'POST', url: '/agents', payload: createBody })).json().id as string;
+      const [other] = await pg.handle.db.insert(t.workspaces).values({ name: `other-${Date.now()}` }).returning();
+      const [foreign] = await pg.handle.db
+        .insert(t.skills)
+        .values({ workspaceId: other!.id, name: 'Foreign', description: 'd', type: 'rubric', source: 'manual', body: 'b' })
+        .returning();
+
+      for (const payload of [{ skill_ids: [foreign!.id] }, { skill_id: '00000000-0000-4000-8000-000000000000' }]) {
+        const res = await app.inject({ method: 'POST', url: `/agents/${agentId}/skills`, payload });
+        expect(res.statusCode).toBe(404);
+      }
+      expect((await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` })).json()).toEqual([]);
+      expect((await versionsOf(app, agentId))[0]!.version).toBe(1);
+      await app.close();
+    });
+  });
+
+  it('GET /agents lists agents oldest first, whatever order their rows are stored in', async () => {
+    const { db } = pg.handle;
+    const [ws] = await db
+      .select({ id: t.workspaces.id })
+      .from(t.workspaces)
+      .where(eq(t.workspaces.name, 'default'));
+    const row = (name: string, createdAt: string) => ({
+      workspaceId: ws!.id,
+      name,
+      provider: 'openai' as const,
+      model: 'gpt-4o-mini',
+      systemPrompt: 'x',
+      createdAt: new Date(createdAt),
+    });
+    // Stored newer-first. Without an ORDER BY the list follows storage order, which an
+    // update also changes (a new row version) — the agents list reshuffled after edits.
+    const [newer] = await db.insert(t.agents).values(row('Order Newer', '2000-01-02')).returning();
+    const [older] = await db.insert(t.agents).values(row('Order Older', '2000-01-01')).returning();
+
+    const app = await makeApp();
+    const ids = (await app.inject({ method: 'GET', url: '/agents' })).json().map((a: { id: string }) => a.id);
+    expect(ids.slice(0, 2)).toEqual([older!.id, newer!.id]);
+    await app.close();
   });
 });

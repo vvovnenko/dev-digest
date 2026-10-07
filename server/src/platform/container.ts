@@ -6,29 +6,46 @@ import type {
   CodeIndex,
   Embedder,
   LLMProvider,
+  ConnTestProvider,
+  FeatureModelChoice,
+  FeatureModelId,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
+import PQueue from 'p-queue';
 import { JobRunner } from './jobs.js';
-import { runBus, type RunBus } from './sse.js';
+import { RunBus } from './sse.js';
 import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
-import { OctokitGitHubClient } from '../adapters/github/octokit.js';
+import { OctokitGitHubClient, type AdapterLog } from '../adapters/github/octokit.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
+import { PrDiffSource } from '../adapters/git/pr-diff.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
 import { AnthropicProvider } from '../adapters/llm/anthropic.js';
+import { FakeReviewLlm } from '../adapters/llm/fake.js';
 import { OpenAIEmbedder } from '../adapters/embedder/openai.js';
-import { OpenRouterProvider } from '@devdigest/reviewer-core';
+import { OpenRouterProvider } from '@devdigest/reviewer-core/llm/openrouter.js';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
+import { SkillsRepository } from '../modules/skills/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { PullsRepository } from '../modules/pulls/repository.js';
+import { SettingsRepository } from '../modules/settings/repository.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
+import { ConventionsRepository } from '../modules/conventions/repository.js';
+import { WorkspaceRepository } from '../modules/workspace/repository.js';
+import { RepoRepository } from '../modules/repos/repository.js';
+import type { RepoIndexing } from '../modules/repos/ports.js';
+import { INDEX_JOB_KIND, REFRESH_JOB_KIND } from '../modules/repo-intel/constants.js';
+import { DEFAULT_WORKSPACE_NAME, SYSTEM_USER_EMAIL } from '../db/seed.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
+import { SafeHttpsFetcher, type UrlFetcher } from '../adapters/http/safe-fetch.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -51,6 +68,10 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Tests pass a bus with a short buffer TTL. */
+  runBus?: RunBus;
+  /** Skill URL import — tests pass a `MockUrlFetcher` (no network). */
+  urlFetcher?: UrlFetcher;
 }
 
 export class Container {
@@ -60,35 +81,54 @@ export class Container {
   readonly auth: AuthProvider;
   readonly jobs: JobRunner;
   readonly runBus: RunBus;
+  /** Review requests wait here for one of `REVIEW_CONCURRENCY` slots. */
+  readonly reviewQueue: PQueue;
 
   private _git?: GitClient;
-  private _github?: GitHubClient;
+  private _github: GitHubClient | undefined;
   private _codeIndex?: CodeIndex;
-  private _embedder?: Embedder;
+  private _embedder: Embedder | undefined;
   private llmCache = new Map<string, LLMProvider>();
 
   // Shared repositories for cross-cutting entities (agents, reviews/pulls,
   // runs). Constructed here, in the composition root, so consuming modules use
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
+  private _skillsRepo?: SkillsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _pullsRepo?: PullsRepository;
+  private _settingsRepo?: SettingsRepository;
+  private _workspaceRepo?: WorkspaceRepository;
+  private _reposRepo?: RepoRepository;
+  private _conventionsRepo?: ConventionsRepository;
+  private _prDiffs?: PrDiffSource;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
 
-  constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
+  constructor(
+    config: AppConfig,
+    db: Db,
+    private overrides: ContainerOverrides = {},
+    /** The app's logger, for adapters that report a degraded path (`app.log`). */
+    private log?: AdapterLog,
+  ) {
     this.config = config;
     this.db = db;
     this.secrets = overrides.secrets ?? new LocalSecretsProvider(config.secretsPath);
-    this.auth = overrides.auth ?? new LocalNoAuthProvider(db);
-    this.runBus = runBus;
+    this.auth =
+      overrides.auth ??
+      new LocalNoAuthProvider(this.workspaceRepo, { email: SYSTEM_USER_EMAIL, workspaceName: DEFAULT_WORKSPACE_NAME });
+    // One bus per app: closing one app must not end another app's streams.
+    this.runBus = overrides.runBus ?? new RunBus();
     this.jobs = new JobRunner(db);
+    this.reviewQueue = new PQueue({ concurrency: config.reviewConcurrency });
   }
 
   get git(): GitClient {
     if (this.overrides.git) return this.overrides.git;
-    this._git ??= new SimpleGitClient(this.config.cloneDir);
+    this._git ??= new SimpleGitClient(this.config.cloneDir, () => this.secrets.get('GITHUB_TOKEN'));
     return this._git;
   }
 
@@ -96,8 +136,57 @@ export class Container {
     return (this._agentsRepo ??= new AgentsRepository(this.db));
   }
 
+  get skillsRepo(): SkillsRepository {
+    return (this._skillsRepo ??= new SkillsRepository(this.db));
+  }
+
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  get pullsRepo(): PullsRepository {
+    return (this._pullsRepo ??= new PullsRepository(this.db));
+  }
+
+  get settingsRepo(): SettingsRepository {
+    return (this._settingsRepo ??= new SettingsRepository(this.db));
+  }
+
+  get workspaceRepo(): WorkspaceRepository {
+    return (this._workspaceRepo ??= new WorkspaceRepository(this.db));
+  }
+
+  /** The diff a review runs on: git when the clone has it, else the stored pr_files patches. */
+  get prDiffs(): PrDiffSource {
+    return (this._prDiffs ??= new PrDiffSource(
+      () => this.git,
+      (prId) => this.reviewRepo.getPrFiles(prId),
+    ));
+  }
+
+  get reposRepo(): RepoRepository {
+    return (this._reposRepo ??= new RepoRepository(this.db));
+  }
+
+  get conventionsRepo(): ConventionsRepository {
+    return (this._conventionsRepo ??= new ConventionsRepository(this.db));
+  }
+
+  /** The provider + model a system LLM feature runs on: the workspace's Settings choice, else the registry default. */
+  featureModel(workspaceId: string, id: FeatureModelId): Promise<FeatureModelChoice> {
+    return resolveFeatureModel(this.settingsRepo, workspaceId, id);
+  }
+
+  /** Repos asks repo-intel to index a clone through its own job kinds, which only this root knows. */
+  get repoIndexing(): RepoIndexing {
+    return {
+      index: async (workspaceId, repo) => {
+        await this.jobs.enqueue(workspaceId, INDEX_JOB_KIND, repo);
+      },
+      refresh: async (workspaceId, repo) => {
+        await this.jobs.enqueue(workspaceId, REFRESH_JOB_KIND, repo);
+      },
+    };
   }
 
   get codeIndex(): CodeIndex {
@@ -135,7 +224,9 @@ export class Container {
    * Live OpenRouter pricing for cost attribution. The lister builds a bare
    * OpenRouter provider just for `/models` (no estimator needed) and degrades to
    * `[]` when no key is configured; the static `estimateCost` table is the
-   * fallback for OpenAI/Anthropic and a cold/cold-failed cache.
+   * fallback for a model the catalog doesn't price and a cold/cold-failed cache.
+   * Every LLM adapter gets `estimatorFor(its id)`, OpenAI/Anthropic models priced
+   * under their catalog alias.
    */
   get priceBook(): PriceBook {
     this._priceBook ??= new PriceBook(async () => {
@@ -155,7 +246,7 @@ export class Container {
     if (this._github) return this._github;
     const token = await this.secrets.get('GITHUB_TOKEN');
     if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
-    this._github = new OctokitGitHubClient(token);
+    this._github = new OctokitGitHubClient(token, { log: this.log });
     return this._github;
   }
 
@@ -165,31 +256,48 @@ export class Container {
     if (injected) return injected;
     const cached = this.llmCache.get(id);
     if (cached) return cached;
-    const provider = await this.buildLlm(id);
+    const provider = this.config.fakeLlm ? new FakeReviewLlm(id) : await this.buildLlm(id);
     this.llmCache.set(id, provider);
     return provider;
   }
 
-  private async buildLlm(id: 'openai' | 'anthropic' | 'openrouter'): Promise<LLMProvider> {
+  /** Build an LLM provider from `candidateKey`, or from the stored secret when none is given. */
+  private async buildLlm(
+    id: 'openai' | 'anthropic' | 'openrouter',
+    candidateKey?: string,
+  ): Promise<LLMProvider> {
     if (id === 'openai') {
-      const key = await this.secrets.get('OPENAI_API_KEY');
+      const key = candidateKey ?? (await this.secrets.get('OPENAI_API_KEY'));
       if (!key) throw new ConfigError('OPENAI_API_KEY is not configured');
-      return new OpenAIProvider(key);
+      return new OpenAIProvider(key, { estimateCost: this.priceBook.estimatorFor('openai') });
     }
     if (id === 'openrouter') {
       // Single OpenRouter provider lives in reviewer-core (shared with the CI
       // runner); inject the PriceBook so cost attribution uses LIVE OpenRouter
       // prices (with the static table as a fallback) rather than a hardcoded one.
-      const key = await this.secrets.get('OPENROUTER_API_KEY');
+      const key = candidateKey ?? (await this.secrets.get('OPENROUTER_API_KEY'));
       if (!key) throw new ConfigError('OPENROUTER_API_KEY is not configured');
-      return new OpenRouterProvider(key, {
-        estimateCost: (model, tokensIn, tokensOut) =>
-          this.priceBook.estimate(model, tokensIn, tokensOut),
-      });
+      return new OpenRouterProvider(key, { estimateCost: this.priceBook.estimatorFor('openrouter') });
     }
-    const key = await this.secrets.get('ANTHROPIC_API_KEY');
+    const key = candidateKey ?? (await this.secrets.get('ANTHROPIC_API_KEY'));
     if (!key) throw new ConfigError('ANTHROPIC_API_KEY is not configured');
-    return new AnthropicProvider(key);
+    // The Messages API returns no cost: price its tokens from the PriceBook too.
+    return new AnthropicProvider(key, { estimateCost: this.priceBook.estimatorFor('anthropic') });
+  }
+
+  /**
+   * Test credentials WITHOUT saving them: a candidate `key` is tried on a fresh,
+   * uncached client; without one, the stored key is. Returns a short success
+   * message and throws whatever the provider throws.
+   */
+  async checkCredentials(provider: ConnTestProvider, key?: string): Promise<string> {
+    if (provider === 'github') {
+      const gh = key ? (this.overrides.github ?? new OctokitGitHubClient(key, { log: this.log })) : await this.github();
+      return `Connected as @${await gh.currentLogin()}`;
+    }
+    const llm = key ? (this.overrides.llm?.[provider] ?? (await this.buildLlm(provider, key))) : await this.llm(provider);
+    const models = await llm.listModels();
+    return `OK — ${models.length} models available`;
   }
 
   async embedder(): Promise<Embedder> {
@@ -215,5 +323,13 @@ export class Container {
     this.llmCache.clear();
     this._github = undefined;
     this._embedder = undefined;
+  }
+
+  private _urlFetcher?: UrlFetcher;
+
+  /** Fetches skill files for URL import: https only, public addresses, size-capped (SSRF guard). */
+  get urlFetcher(): UrlFetcher {
+    if (this.overrides.urlFetcher) return this.overrides.urlFetcher;
+    return (this._urlFetcher ??= new SafeHttpsFetcher());
   }
 }

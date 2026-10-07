@@ -6,8 +6,10 @@ import type {
   CompletionResult,
   StructuredRequest,
   StructuredResult,
+  LLMUsage,
 } from '@devdigest/shared';
 import { toJsonSchema, parseWithRepair } from './structured.js';
+import { LlmCallError } from './errors.js';
 
 /**
  * The single OpenAI-compatible structured provider, owned by the engine because
@@ -34,6 +36,8 @@ export interface OpenRouterProviderOptions {
   maxRetries?: number;
   /** Injected cost estimator; returns USD or null when the model is unknown. */
   estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
+  /** fetch used by the SDK (tests inject a fake; default: global fetch). */
+  fetch?: typeof globalThis.fetch;
 }
 
 export class OpenRouterProvider implements LLMProvider {
@@ -42,17 +46,22 @@ export class OpenRouterProvider implements LLMProvider {
   private baseURL: string;
   private apiKey: string;
   private estimateCost?: OpenRouterProviderOptions['estimateCost'];
+  private timeoutMs: number;
+  private fetchImpl: typeof globalThis.fetch;
 
   constructor(apiKey: string, opts: OpenRouterProviderOptions = {}) {
     this.id = opts.id ?? 'openrouter';
     this.apiKey = apiKey;
     this.baseURL = opts.baseURL ?? 'https://openrouter.ai/api/v1';
     this.estimateCost = opts.estimateCost;
+    this.timeoutMs = opts.timeoutMs ?? 90_000;
+    this.fetchImpl = opts.fetch ?? globalThis.fetch;
     this.client = new OpenAI({
       apiKey,
       baseURL: this.baseURL,
-      timeout: opts.timeoutMs ?? 90_000,
+      timeout: this.timeoutMs,
       maxRetries: opts.maxRetries ?? 2,
+      ...(opts.fetch ? { fetch: opts.fetch } : {}),
     });
   }
 
@@ -64,38 +73,68 @@ export class OpenRouterProvider implements LLMProvider {
     let tokensOut = 0;
     let costFromApi: number | null = null;
     let lastRaw = '';
+    // Billed so far — every failure below carries it, so a failed run records its real cost.
+    const usage = (): LLMUsage => ({
+      tokensIn,
+      tokensOut,
+      costUsd: costFromApi ?? this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null,
+    });
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await this.client.chat.completions.create({
-        model: req.model,
-        messages,
-        temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-        },
-        // OpenRouter session grouping — extra body field (spread is exempt from
-        // excess-property checks). Only sent when talking to OpenRouter.
-        ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-        // OpenRouter usage accounting — ask it to return the REAL generation
-        // cost (USD) in `usage.cost`, instead of estimating from a price book.
-        ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
-      });
+      let res: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        res = await this.client.chat.completions.create(
+          {
+            model: req.model,
+            messages,
+            temperature: req.temperature ?? 0,
+            ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+            response_format: {
+              type: 'json_schema',
+              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+            },
+            // OpenRouter session grouping — extra body field (spread is exempt from
+            // excess-property checks). Only sent when talking to OpenRouter.
+            ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
+            // OpenRouter usage accounting — ask it to return the REAL generation
+            // cost (USD) in `usage.cost`, instead of estimating from a price book.
+            ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
+          },
+          req.signal ? { signal: req.signal } : undefined,
+        );
+      } catch (err) {
+        throw new LlmCallError(
+          `OpenRouter call failed for ${req.schemaName}: ${(err as Error).message}`,
+          usage(),
+          { cause: err },
+        );
+      }
+
+      tokensIn += res.usage?.prompt_tokens ?? 0;
+      tokensOut += res.usage?.completion_tokens ?? 0;
+      // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
+      const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
+      if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.
       const choice = res.choices?.[0];
       if (!choice) {
         const errMsg = (res as unknown as { error?: { message?: string } }).error?.message;
-        throw new Error(`OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`);
+        throw new LlmCallError(
+          `OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`,
+          usage(),
+        );
       }
       lastRaw = choice.message?.content ?? '';
-      tokensIn += res.usage?.prompt_tokens ?? 0;
-      tokensOut += res.usage?.completion_tokens ?? 0;
-      // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
-      const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
-      if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
+      // Cut off at the token limit: the JSON is incomplete, and a reprompt would
+      // pay for the same oversized answer again — fail now instead.
+      if (choice.finish_reason === 'length') {
+        throw new LlmCallError(
+          `${req.schemaName} output was cut off at the token limit${req.maxTokens ? ` (${req.maxTokens})` : ''}`,
+          usage(),
+        );
+      }
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
@@ -104,7 +143,7 @@ export class OpenRouterProvider implements LLMProvider {
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: costFromApi ?? this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null,
+          costUsd: usage().costUsd,
           raw: lastRaw,
           attempts: attempt,
         };
@@ -112,7 +151,10 @@ export class OpenRouterProvider implements LLMProvider {
       messages.push({ role: 'assistant', content: lastRaw });
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
-    throw new Error(`OpenRouter structured output failed schema validation for ${req.schemaName}`);
+    throw new LlmCallError(
+      `OpenRouter structured output failed schema validation for ${req.schemaName}`,
+      usage(),
+    );
   }
 
   /**
@@ -121,8 +163,10 @@ export class OpenRouterProvider implements LLMProvider {
    * converted from per-token to USD per 1M tokens; cheapest output first.
    */
   async listModels(): Promise<ModelInfo[]> {
-    const res = await fetch(`${this.baseURL}/models`, {
+    // Raw fetch, so the SDK's timeout doesn't apply: give it the same one.
+    const res = await this.fetchImpl(`${this.baseURL}/models`, {
       headers: { Authorization: `Bearer ${this.apiKey}` },
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!res.ok) throw new Error(`OpenRouter /models returned ${res.status}`);
     const json = (await res.json()) as {

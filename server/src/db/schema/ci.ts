@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, numeric } from 'drizzle-orm/pg-core';
 import { agents } from './agents';
 
 export const ciInstallations = pgTable('ci_installations', {
@@ -20,7 +20,7 @@ export const ciRuns = pgTable('ci_runs', {
   ranAt: timestamp('ran_at', { withTimezone: true }),
   status: text('status'),
   findingsCount: integer('findings_count'),
-  costUsd: doublePrecision('cost_usd'),
+  costUsd: numeric('cost_usd', { mode: 'number' }), // exact money; a number in JS
   githubUrl: text('github_url'),
   source: text('source'),
 });

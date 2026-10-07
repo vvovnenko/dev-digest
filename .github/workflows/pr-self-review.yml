@@ -1,0 +1,40 @@
+# pr-self-review — the deterministic half of the PR self-review gate.
+# Runs the same tree-only checks as the local /pr-self-review skill (secrets in
+# every PR commit, do-not-touch paths, migrations, the vendor/shared mirror,
+# INSIGHTS append-only, the onion baseline and ratchets, small rules) — no model,
+# no node_modules. CRITICALs that only the local gate may waive or verify are
+# reported, not failed. The model half arrives as the `devdigest/pr-self-review`
+# commit status (scripts/publish-status.mjs). Make both required checks on main.
+# Not the agent-runner action (lesson L06): that is an independent CI reviewer.
+name: pr-self-review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-self-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: deterministic checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Self-review checks (no model)
+        run: node .claude/skills/pr-self-review/scripts/checks.mjs --ci --base "origin/${{ github.base_ref }}"
+
+      - name: Gate script tests
+        run: node --test '.claude/skills/pr-self-review/scripts/test/*.test.mjs'

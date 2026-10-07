@@ -1,0 +1,8 @@
+{
+  "name": "devdigest-review-skills",
+  "version": "1.0.0",
+  "description": "Review rubrics for pull requests: error handling.",
+  "author": { "name": "Volodymyr Vovnenko" },
+  "repository": "https://github.com/vvovnenko/dev-digest",
+  "keywords": ["code-review", "error-handling", "devdigest"]
+}

@@ -27,6 +27,10 @@ A single-pass review of a small/medium PR is roughly **~12k input + ~1.5k output
 tokens** (observed: 9k–17k total). The `$/run` column below uses that estimate —
 bigger diffs scale up linearly. Prices are OpenRouter list prices (USD per 1M
 tokens) as surfaced by the studio's model list; verify live before relying on them.
+The server's offline fallback table disagrees for the default model (0.14 / 0.28,
+`../../server/src/adapters/llm/pricing.ts:42`), and a live OpenRouter price, when
+cached, wins over both (`../../server/src/platform/price-book.ts:67-71`). For what a run
+really cost, read its recorded cost (`agent_runs.cost_usd`, the Timeline's cost badge).
 
 | Model | in / out ($/M) | ~$/run | Notes |
 |---|---|---|---|

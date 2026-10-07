@@ -15,12 +15,21 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  estimateTokens,
+  renderSkill,
+  skillBlocks,
   type PromptParts,
+  type PromptSkill,
   type AssembledPrompt,
 } from './prompt.js';
 
 // Citation grounding — the mandatory mechanical gate for diff findings.
-export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
+export {
+  groundFindings,
+  groundingSummary,
+  type GroundingResult,
+  type GroundingOptions,
+} from './grounding.js';
 
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {
@@ -39,6 +48,9 @@ export {
   reviewPullRequest,
   DEFAULT_MAP_THRESHOLD_LINES,
   DEFAULT_REVIEW_MAX_RETRIES,
+  DEFAULT_MAX_OUTPUT_TOKENS,
+  DEFAULT_MAX_DIFF_CHARS,
+  DEFAULT_SINGLE_PASS_MAX_CHARS,
   type ReviewInput,
   type ReviewOutcome,
   type ReviewEvent,
@@ -51,9 +63,13 @@ export {
   toReviewPayload,
   gateTriggered,
   countBlockers,
+  verdictFromFindings,
   type ToReviewOptions,
 } from './output/to-review.js';
 
-// The single OpenAI-compatible structured provider (OpenRouter), shared by the
-// CI runner and the server's openrouter path. Owns session grouping + guards.
-export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+// Failures that carry what was already billed, so a failed run records its cost.
+export { LlmCallError, DiffTooLargeError, NothingToReviewError, usageOf } from './llm/errors.js';
+
+// The network-bound provider is NOT exported here, so importing the engine never
+// pulls in an HTTP client: take it from `@devdigest/reviewer-core/llm/openrouter`
+// (server: platform/container.ts only; enforced by `pnpm arch`).

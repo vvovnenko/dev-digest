@@ -1,6 +1,6 @@
 import type { Agent, AgentVersion, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { AgentVersionConfig } from '@devdigest/shared';
-import type { AgentRow, AgentVersionRow } from './repository.js';
+import type { AgentRecord, AgentVersionRecord } from './domain.js';
 
 /**
  * Pure helpers for the agents module — DB row ⇄ DTO mapping and the
@@ -8,8 +8,8 @@ import type { AgentRow, AgentVersionRow } from './repository.js';
  * implementations.
  */
 
-/** Map a persisted agent row to the public `Agent` DTO. */
-export function toAgentDto(row: AgentRow): Agent {
+/** Map a stored agent to the public `Agent` DTO; `skillCount` = its enabled skill links. */
+export function toAgentDto(row: AgentRecord, skillCount?: number): Agent {
   return {
     id: row.id,
     name: row.name,
@@ -23,6 +23,7 @@ export function toAgentDto(row: AgentRow): Agent {
     strategy: row.strategy as ReviewStrategy,
     ci_fail_on: row.ciFailOn as CiFailOn,
     repo_intel: row.repoIntel,
+    ...(skillCount !== undefined ? { skill_count: skillCount } : {}),
   };
 }
 
@@ -32,55 +33,11 @@ export function toAgentDto(row: AgentRow): Agent {
  * could drift), so it is parsed through `AgentVersionConfig` — a malformed
  * snapshot throws here rather than leaking an unvalidated blob to the client.
  */
-export function toAgentVersionDto(row: AgentVersionRow): AgentVersion {
+export function toAgentVersionDto(row: AgentVersionRecord): AgentVersion {
   return {
     agent_id: row.agentId,
     version: row.version,
     config: AgentVersionConfig.parse(row.configJson),
     created_at: row.createdAt.toISOString(),
   };
-}
-
-/** Fields whose change bumps the agent's config version (anything but `enabled`). */
-export interface ConfigChangePatch {
-  name?: string;
-  description?: string;
-  provider?: Provider;
-  model?: string;
-  systemPrompt?: string;
-  outputSchema?: unknown;
-  strategy?: ReviewStrategy;
-  ciFailOn?: CiFailOn;
-  repoIntel?: boolean;
-}
-
-/**
- * True when a patch changes config (vs. just toggling `enabled`) relative to the
- * existing row — a config change bumps the version and snapshots agent_versions.
- */
-export function isConfigChange(
-  existing: Pick<
-    AgentRow,
-    | 'name'
-    | 'description'
-    | 'provider'
-    | 'model'
-    | 'systemPrompt'
-    | 'strategy'
-    | 'ciFailOn'
-    | 'repoIntel'
-  >,
-  patch: ConfigChangePatch,
-): boolean {
-  return (
-    (patch.name !== undefined && patch.name !== existing.name) ||
-    (patch.description !== undefined && patch.description !== existing.description) ||
-    (patch.provider !== undefined && patch.provider !== existing.provider) ||
-    (patch.model !== undefined && patch.model !== existing.model) ||
-    (patch.systemPrompt !== undefined && patch.systemPrompt !== existing.systemPrompt) ||
-    (patch.strategy !== undefined && patch.strategy !== existing.strategy) ||
-    (patch.ciFailOn !== undefined && patch.ciFailOn !== existing.ciFailOn) ||
-    (patch.repoIntel !== undefined && patch.repoIntel !== existing.repoIntel) ||
-    patch.outputSchema !== undefined
-  );
 }

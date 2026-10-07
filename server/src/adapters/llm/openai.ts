@@ -6,10 +6,11 @@ import type {
   CompletionResult,
   StructuredRequest,
   StructuredResult,
+  LLMUsage,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
-import { estimateCost } from './pricing.js';
+import { estimateCost, type CostEstimator } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
 
 const DEFAULT_TIMEOUT = 60_000;
@@ -47,9 +48,12 @@ function tuningParams(
 export class OpenAIProvider implements LLMProvider {
   readonly id = 'openai' as const;
   private client: OpenAI;
+  private estimateCost: CostEstimator;
 
-  constructor(apiKey: string) {
+  /** `estimateCost` prices a call's tokens (the server injects the PriceBook); the static table otherwise. */
+  constructor(apiKey: string, opts: { estimateCost?: CostEstimator } = {}) {
     this.client = new OpenAI({ apiKey });
+    this.estimateCost = opts.estimateCost ?? estimateCost;
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -81,7 +85,7 @@ export class OpenAIProvider implements LLMProvider {
       model: req.model,
       tokensIn,
       tokensOut,
-      costUsd: estimateCost(req.model, tokensIn, tokensOut),
+      costUsd: this.estimateCost(req.model, tokensIn, tokensOut),
     };
   }
 
@@ -104,7 +108,7 @@ export class OpenAIProvider implements LLMProvider {
               type: 'json_schema',
               json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
             },
-          }),
+          }, req.signal ? { signal: req.signal } : undefined),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );
@@ -119,7 +123,7 @@ export class OpenAIProvider implements LLMProvider {
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: estimateCost(req.model, tokensIn, tokensOut),
+          costUsd: this.estimateCost(req.model, tokensIn, tokensOut),
           raw: lastRaw,
           attempts: attempt,
         };
@@ -129,9 +133,11 @@ export class OpenAIProvider implements LLMProvider {
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
 
-    throw new ExternalServiceError('OpenAI structured output failed schema validation', {
-      raw: lastRaw,
-    });
+    // Carry what the attempts cost, so a failed run still records it (read via `usage`).
+    throw Object.assign(
+      new ExternalServiceError('OpenAI structured output failed schema validation', { raw: lastRaw }),
+      { usage: { tokensIn, tokensOut, costUsd: this.estimateCost(req.model, tokensIn, tokensOut) } satisfies LLMUsage },
+    );
   }
 
   async embed(texts: string[]): Promise<number[][]> {

@@ -1,6 +1,11 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, chmod } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { z } from 'zod';
 import type { SecretsProvider, SecretKey } from '@devdigest/shared';
+import { ConfigError } from '../../platform/errors.js';
+
+/** The secrets file: key → value, nothing else. */
+const SecretsFile = z.record(z.string(), z.string());
 
 /**
  * LocalSecretsProvider — writable MVP secrets backend.
@@ -23,15 +28,27 @@ export class LocalSecretsProvider implements SecretsProvider {
 
   private async load(): Promise<Record<string, string>> {
     if (this.cache) return this.cache;
-    let data: Record<string, string> = {};
+    let text: string;
     try {
-      const parsed = JSON.parse(await readFile(this.filePath, 'utf8'));
-      if (parsed && typeof parsed === 'object') data = parsed as Record<string, string>;
-    } catch {
-      // Missing or unreadable file → no stored overrides yet.
+      text = await readFile(this.filePath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      this.cache = {}; // no stored overrides yet
+      return this.cache;
     }
-    this.cache = data;
-    return data;
+    // A broken file must fail loudly: treating it as empty would silently drop every stored key.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new ConfigError(`Secrets file ${this.filePath} is not valid JSON — fix or remove it`);
+    }
+    const result = SecretsFile.safeParse(parsed);
+    if (!result.success) {
+      throw new ConfigError(`Secrets file ${this.filePath} must map key names to string values`);
+    }
+    this.cache = result.data;
+    return this.cache;
   }
 
   async get(key: SecretKey): Promise<string | undefined> {
@@ -42,9 +59,14 @@ export class LocalSecretsProvider implements SecretsProvider {
   }
 
   async set(key: SecretKey, value: string): Promise<void> {
-    const data = await this.load();
-    data[key as string] = value;
-    await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    const data = { ...(await this.load()), [key as string]: value };
+    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+    // Write a private temp file, then rename over the real one: a crash mid-write
+    // can't truncate it, and `mode` on writeFile only applies to a NEW file.
+    const tmp = `${this.filePath}.${process.pid}.tmp`;
+    await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    await chmod(tmp, 0o600);
+    await rename(tmp, this.filePath);
+    this.cache = data;
   }
 }

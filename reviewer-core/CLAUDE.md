@@ -11,17 +11,25 @@ client) and `zod` 3 · Vitest 2 · tsx.
 ```sh
 npm test           # vitest, hermetic — stubbed LLMProvider, no keys, no network
 npm run typecheck  # this IS the build: the package emits no JS
+cd ../server && pnpm arch  # import boundaries — also checks reviewer-core/src
+npm run lint       # eslint + type-aware typescript-eslint (warn-only)
+npm run coverage   # v8 report, no thresholds
 ```
 
 ## Conventions
 
 - Purity is the contract: no DB, filesystem or env access. The only I/O is an
   **injected** `LLMProvider`; anything else belongs in `server/`.
+- `server/`'s `pnpm arch` (dependency-cruiser, `onion-architecture` skill) enforces it:
+  no server `src/**` import but `@devdigest/shared`, no DB/fs/Fastify, and the `openai`
+  client only in `src/llm/openrouter.ts` (`openai/helpers/*` is fine).
 - Consumed as TypeScript source through `server/`'s tsconfig alias — never add a
   build step or a `dist/` import. Stray `src/**/*.js` / `*.d.ts` would shadow the
   sources (they are gitignored for that reason).
 - The public API is `src/index.ts`. Changing an export means checking the
   importers in `server/src/platform/*` and `server/src/modules/reviews/*`.
+- `OpenRouterProvider` is not in `src/index.ts`: the server's container imports the
+  `@devdigest/reviewer-core/llm/openrouter.js` subpath, and `pnpm arch` keeps it there.
 - `@devdigest/shared` resolves to `../server/src/vendor/shared` — the server
   copy, not the client one.
 - Untrusted content (diff, PR description, repo map, specs, callers) goes through
@@ -41,8 +49,14 @@ npm run typecheck  # this IS the build: the package emits no JS
   in the diff. Never add a bypass — it is what stops hallucinated locations.
 - The score is recomputed from surviving findings; the model's score is ignored.
   The model's **verdict** is not recomputed.
+- Since wave 1 the verdict **is** recomputed too: `verdictFromFindings` derives it from the kept
+  findings under `failOn` (`src/output/to-review.ts:48-51`) — this supersedes the line above.
 - The `skills` / `memory` / `specs` prompt slots exist, but the starter server
   never passes them — they are filled in later lessons.
+- Since L02 the server passes `skills` as `PromptSkill[]` (enabled links of enabled skills, in
+  agent order), each rendered by `renderSkill`; this supersedes the line above for skills.
+- `exactOptionalPropertyTypes` is on here, in server/ and e2e/: an optional field you pass as
+  `undefined` needs `?: T | undefined` (input bags like `PromptParts`), or spread it conditionally.
 
 ## Read when
 

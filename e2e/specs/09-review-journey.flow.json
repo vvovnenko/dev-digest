@@ -1,0 +1,22 @@
+{
+  "name": "Run a review on PR #482, watch it live, accept its finding and open its trace",
+  "description": "The main journey end to end, with no model key: the hermetic API runs with DEVDIGEST_FAKE_LLM=1, whose fake LLM answers every review with one WARNING on the first added line of the diff (server/src/adapters/llm/fake.ts). Run all enabled agents from the Agent runs tab, see the live review (SSE), wait for the fake finding in the newest run (open by default, its first card expanded), accept it, then open the first Timeline run's trace. A 1280×1600 viewport keeps every target on screen: agent-browser 0.27 does not scroll the shell's inner pane before a click. Writes to the DB (new runs + an accepted finding) — the hermetic stack's Postgres is fresh each run.",
+  "steps": [
+    { "cmd": ["set", "viewport", "1280", "1600"], "label": "tall viewport: agent-browser clicks by coordinates and does not scroll the shell's inner pane" },
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Run Review"], "label": "open Run Review" },
+    { "cmd": ["find", "text", "Run all enabled agents", "click"], "label": "run every enabled agent" },
+    { "cmd": ["wait", "--text", "Review in progress"], "label": "the live review shows while the runs stream" },
+    { "cmd": ["wait", "--text", "Fake finding on the first added line"], "label": "a finished run shows the fake LLM's finding" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Accept"], "label": "accept the newest run's first finding" },
+    { "cmd": ["wait", "--text", "accepted"], "label": "the card is marked accepted" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Open run trace & logs"], "label": "open the first Timeline run's trace" },
+    { "cmd": ["wait", "--text", "Prompt assembly"], "label": "the trace drawer shows the persisted trace" }
+  ]
+}

@@ -1,0 +1,192 @@
+{
+  "$comment": "Which project skill reviews which changed files. A file goes to a skill when any of its rules matches: an `include` glob, no `exclude` glob, and — when the rule has a `trigger` — at least one added line matching that regex. `origin: local` skills may raise CRITICAL for their hard rules; `third-party` ones only for a bug or a vulnerability. Every folder in .claude/skills/ must appear under `skills` or `ignored` (select-skills.mjs fails otherwise). Edit the rules, not the scripts.",
+  "version": 1,
+  "budget": {
+    "batch_files": 15,
+    "batch_lines": 1500,
+    "max_tasks": 24,
+    "max_lines": 40000
+  },
+  "global_exclude": [
+    "server/clones/**",
+    "**/node_modules/**",
+    "**/src/vendor/ui/**",
+    "client/src/vendor/shared/**",
+    ".claude/skills/*/evals/**"
+  ],
+  "skills": {
+    "frontend-ui-architecture": {
+      "group": "ui",
+      "origin": "local",
+      "renames": true,
+      "rules": [
+        { "include": ["client/src/**/*.{ts,tsx}"], "exclude": ["client/src/vendor/**", "**/*.test.{ts,tsx}", "client/src/test/**"] }
+      ],
+      "suppress": []
+    },
+    "react-best-practices": {
+      "group": "ui",
+      "origin": "third-party",
+      "rules": [
+        { "include": ["client/src/**/*.tsx", "client/src/lib/hooks/*.ts"], "exclude": ["client/src/vendor/**", "**/*.test.{ts,tsx}"] }
+      ],
+      "suppress": [
+        "Tailwind utility classes instead of `style={s.x}` — client styles with a colocated styles.ts (client/CLAUDE.md)",
+        "moving code into `utils/` or `components/ui/` — client uses `src/lib/<purpose>.ts` and `src/components/<kebab>/`",
+        "Axios, `useApiQuery` or `useApiMutation` — data goes through named TanStack hooks over `src/lib/api.ts`"
+      ]
+    },
+    "next-best-practices": {
+      "group": "ui",
+      "origin": "third-party",
+      "rules": [
+        {
+          "include": [
+            "client/src/app/**/{page,layout,error,loading,not-found,template,default,route,global-error}.{ts,tsx}",
+            "client/next.config.mjs",
+            "client/src/i18n/**",
+            "client/src/middleware.ts"
+          ]
+        },
+        { "include": ["client/src/**/*.{ts,tsx}"], "exclude": ["client/src/vendor/**"], "trigger": "^\\s*['\"]use (client|server)['\"]" }
+      ],
+      "suppress": []
+    },
+    "react-testing-library": {
+      "group": "ui",
+      "origin": "third-party",
+      "rules": [
+        { "include": ["client/**/*.test.{ts,tsx}", "client/src/test/**", "client/vitest.config.ts"], "exclude": ["client/src/vendor/**"] }
+      ],
+      "suppress": [
+        "mocking `fetch` — component tests `vi.mock` the hooks module; data-layer tests mock `src/lib/api.ts` (client/CLAUDE.md)"
+      ]
+    },
+    "onion-architecture": {
+      "group": "backend",
+      "origin": "local",
+      "renames": true,
+      "rules": [
+        {
+          "include": [
+            "server/src/**/*.ts",
+            "reviewer-core/src/**/*.ts",
+            "server/test/**/*.ts",
+            "reviewer-core/test/**/*.ts",
+            "server/.dependency-cruiser.cjs"
+          ],
+          "exclude": ["server/src/vendor/**", "server/src/db/migrations/**"]
+        }
+      ],
+      "suppress": []
+    },
+    "fastify-best-practices": {
+      "group": "backend",
+      "origin": "third-party",
+      "rules": [
+        {
+          "include": [
+            "server/src/modules/**/routes.ts",
+            "server/src/modules/_shared/**/*.ts",
+            "server/src/app.ts",
+            "server/src/server.ts",
+            "server/src/platform/**/*.ts"
+          ]
+        }
+      ],
+      "suppress": [
+        "dependency injection through Fastify decorators or `fastify.repositories` — the only decorator is `app.container`, routes call services (onion-architecture wins on structure)",
+        "SQL or business logic inside a Fastify service/plugin — layering belongs to onion-architecture"
+      ]
+    },
+    "drizzle-orm-patterns": {
+      "group": "backend",
+      "origin": "third-party",
+      "rules": [
+        {
+          "include": [
+            "server/src/modules/**/repository.ts",
+            "server/src/modules/**/repository/*.repo.ts",
+            "server/src/db/**/*.ts",
+            "server/drizzle.config.ts"
+          ],
+          "exclude": ["server/src/db/migrations/**"]
+        }
+      ],
+      "suppress": []
+    },
+    "postgresql-table-design": {
+      "group": "backend",
+      "origin": "third-party",
+      "rules": [
+        { "include": ["server/src/db/schema.ts", "server/src/db/schema/**/*.ts", "server/src/db/migrations/*.sql"] }
+      ],
+      "suppress": []
+    },
+    "zod": {
+      "group": "contracts",
+      "origin": "third-party",
+      "rules": [
+        { "include": ["server/src/vendor/shared/**/*.ts"] },
+        {
+          "include": ["**/*.{ts,tsx,mts}"],
+          "exclude": ["**/src/vendor/**"],
+          "trigger": "from\\s+['\"]zod['\"]|require\\(\\s*['\"]zod['\"]"
+        }
+      ],
+      "suppress": []
+    },
+    "security": {
+      "group": "cross-cutting",
+      "origin": "third-party",
+      "rules": [
+        {
+          "include": [
+            "server/src/**/*.ts",
+            "reviewer-core/src/**/*.ts",
+            "client/src/**/*.{ts,tsx}",
+            "client/next.config.mjs",
+            "e2e/run.ts",
+            "e2e/lib/**/*.ts",
+            ".github/workflows/*.{yml,yaml}",
+            "scripts/**/*.sh",
+            "**/docker-compose.yml",
+            "**/Dockerfile",
+            ".claude/**/*.{mjs,js,ts,sh}",
+            ".claude/settings.json"
+          ],
+          "exclude": ["**/*.test.{ts,tsx}", "**/src/vendor/**", "server/src/db/migrations/**"]
+        }
+      ],
+      "suppress": [
+        "the API has no authentication — by design it listens on loopback only (server/.env.example: API_HOST=localhost)",
+        "fake keys in tests and mocks such as `sk_live_xxx` (server/src/adapters/mocks.ts, reviewer-core/test/helpers/fixtures.ts)",
+        "Express, MongoDB or JWT advice that has no counterpart in this Fastify + Drizzle code"
+      ]
+    },
+    "typescript-expert": {
+      "group": "cross-cutting",
+      "origin": "third-party",
+      "rules": [
+        { "include": ["**/tsconfig*.json", "**/*.d.ts"], "exclude": ["**/next-env.d.ts", "**/src/vendor/**"] },
+        {
+          "include": ["**/*.{ts,tsx,mts}"],
+          "exclude": ["**/src/vendor/**"],
+          "trigger": ":\\s*any\\b|\\bas any\\b|<any>|\\bany\\[\\]|as unknown as|@ts-ignore|@ts-expect-error"
+        }
+      ],
+      "suppress": []
+    },
+    "mermaid-diagram": {
+      "group": "docs",
+      "origin": "third-party",
+      "max_severity": "SUGGESTION",
+      "rules": [{ "include": ["**/*.md"], "trigger": "^\\s*```mermaid" }],
+      "suppress": []
+    }
+  },
+  "ignored": {
+    "engineering-insights": "a workflow skill, not a reviewer; its append-only rule is the deterministic check D5",
+    "pr-self-review": "this skill"
+  }
+}

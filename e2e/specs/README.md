@@ -5,7 +5,7 @@ runner ignores this README. Written specs go in `../docs/`.
 
 Adding a flow:
 
-- Next free number, e.g. `08-name.flow.json`.
+- Next free number, e.g. `10-name.flow.json`.
 - Deterministic locators only (`--url`, `--text`, `find role|text|label`) —
   never the AI `chat` command.
 - Read-only against seeded data; nothing that writes or calls a model.

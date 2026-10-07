@@ -1,8 +1,10 @@
 /* CodeLine — one rendered diff line: gutter number, +/- sign, text, plus the
-   hover "+" affordance, any anchored comment threads, and an inline composer. */
+   "+" affordance (shown on hover, and on keyboard focus), any anchored comment
+   threads, and an inline composer. */
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor } from "../styles";
@@ -20,7 +22,9 @@ export function CodeLine({
   threads: CommentThread[];
   commenting?: DiffCommentApi;
 }) {
+  const t = useTranslations("shell");
   const [hover, setHover] = React.useState(false);
+  const [focused, setFocused] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
 
   if (ln.kind === "hunk") {
@@ -33,7 +37,10 @@ export function CodeLine({
 
   const sign = ln.kind === "add" ? "+" : ln.kind === "del" ? "−" : "";
   const target = commenting?.canComment ? commentTargetFor(ln) : null;
-  const showAdd = hover && !!target && !composing;
+  // Rendered whenever commenting is possible, so it is reachable with Tab;
+  // visible on hover or when focused.
+  const canAdd = !!target && !composing;
+  const showAdd = hover || focused;
 
   return (
     <div
@@ -43,13 +50,15 @@ export function CodeLine({
     >
       <div style={lineRowFor(ln.kind)}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
-          {showAdd && target && (
+          {canAdd && (
             <button
               type="button"
-              title="Add a comment on this line"
-              aria-label="Add a comment on this line"
+              title={t("diffViewer.addComment")}
+              aria-label={t("diffViewer.addComment")}
               onClick={() => setComposing(true)}
-              style={cs.addBtn}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              style={{ ...cs.addBtn, opacity: showAdd ? 1 : 0 }}
             >
               +
             </button>

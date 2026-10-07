@@ -57,7 +57,8 @@ export class RipgrepCodeIndex implements CodeIndex {
   private grepWithRg(rg: string, root: string, pattern: string): Promise<CodeMatch[]> {
     return new Promise((resolve, reject) => {
       const matches: CodeMatch[] = [];
-      const proc = spawn(rg, ['--line-number', '--no-heading', '--color=never', pattern, root]);
+      // -e / --: the pattern and path are data even when they start with `-`.
+      const proc = spawn(rg, ['--line-number', '--no-heading', '--color=never', '-e', pattern, '--', root]);
       let buf = '';
       proc.stdout.on('data', (d) => {
         buf += d.toString();

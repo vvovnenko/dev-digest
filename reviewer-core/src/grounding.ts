@@ -7,13 +7,19 @@ import type { Finding, UnifiedDiff } from '@devdigest/shared';
  * real hunk in the unified diff for the same file. Findings that fail are
  * dropped (the model "hallucinated" a location).
  *
- * EXCEPTION: findings from full-file scanners (hooks / blast / onboarding) are
- * not tied to a diff hunk — they ground against the file existing in the diff
- * (or are exempted entirely). We treat `kind` in {secret_leak, lethal_trifecta,
- * phantom, hook} as full-file: they only require the file to be present.
+ * EXCEPTION, opt-in only: findings from deterministic full-file scanners (hooks /
+ * blast / onboarding) are not tied to a diff hunk. With `fileLevelKinds`, `kind`
+ * in {secret_leak, lethal_trifecta, phantom, hook} only requires the file to be
+ * present. Never set it for model output: the model picks `kind` itself, so a
+ * file-level kind would let it keep a finding at any line of any diffed file.
  */
 
 const FULL_FILE_KINDS = new Set(['secret_leak', 'lethal_trifecta', 'phantom', 'hook']);
+
+export interface GroundingOptions {
+  /** Let file-level kinds skip the line check — deterministic scanners only. Default false. */
+  fileLevelKinds?: boolean;
+}
 
 export interface GroundingResult {
   kept: Finding[];
@@ -41,7 +47,9 @@ export function buildLineIndex(diff: UnifiedDiff): Map<string, Set<number>> {
 function rangeIntersects(lines: Set<number>, start: number, end: number): boolean {
   const lo = Math.min(start, end);
   const hi = Math.max(start, end);
-  for (let n = lo; n <= hi; n++) if (lines.has(n)) return true;
+  // Walk the covered lines, never the range: both ends come from the model, and
+  // counting through e.g. 1..2^53 would block the whole process.
+  for (const n of lines) if (n >= lo && n <= hi) return true;
   return false;
 }
 
@@ -49,14 +57,18 @@ function rangeIntersects(lines: Set<number>, start: number, end: number): boolea
  * Apply the grounding gate to a set of findings against a unified diff.
  * Returns the kept findings and the dropped ones with reasons (for the trace).
  */
-export function groundFindings(findings: Finding[], diff: UnifiedDiff): GroundingResult {
+export function groundFindings(
+  findings: Finding[],
+  diff: UnifiedDiff,
+  opts: GroundingOptions = {},
+): GroundingResult {
   const lineIndex = buildLineIndex(diff);
   const filesInDiff = new Set(diff.files.map((f) => f.path));
   const kept: Finding[] = [];
   const dropped: { finding: Finding; reason: string }[] = [];
 
   for (const finding of findings) {
-    const isFullFile = finding.kind ? FULL_FILE_KINDS.has(finding.kind) : false;
+    const isFullFile = opts.fileLevelKinds === true && !!finding.kind && FULL_FILE_KINDS.has(finding.kind);
 
     if (!filesInDiff.has(finding.file)) {
       dropped.push({ finding, reason: `file '${finding.file}' not present in diff` });

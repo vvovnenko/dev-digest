@@ -6,134 +6,267 @@ This contract covers every route under `src/app/`: what it renders, which hooks 
 its URL params, and the visible copy the e2e flows depend on. The route ↔ endpoint diagram is in
 [`../README.md`](../README.md#ui-route-map); the data layer is in
 [`../docs/ui-architecture.md`](../docs/ui-architecture.md). Folded in:
-[`01-run-cost-badge.md`](./01-run-cost-badge.md), [`02-findings-by-severity.md`](./02-findings-by-severity.md).
+[`01-run-cost-badge.md`](./01-run-cost-badge.md), [`02-findings-by-severity.md`](./02-findings-by-severity.md),
+[`03-skills.md`](./03-skills.md).
 The flows are described in [`../../e2e/specs/flows.md`](../../e2e/specs/flows.md). Paths are relative to
-`client/`; `PR/` = `src/app/repos/[repoId]/pulls/[number]/_components/`. There are seven routes and no
+`client/`; `PR/` = `src/app/(shell)/repos/[repoId]/pulls/[number]/_components/`. There are ten routes and no
 others: no `/showcase` (the gallery renders only in `src/test/smoke.test.tsx:4`), no `/settings` or
-`/repos/:repoId` index (Next's 404).
+`/repos/:repoId` index — an unknown URL renders `src/app/not-found.tsx:9-23` ("Page not found", "Go to DevDigest").
+
+Every route except `/onboarding` lives in the `src/app/(shell)/` route group: its layout mounts `AppShell` once
+(`src/app/(shell)/layout.tsx:7-9`) and each page sets its breadcrumb with `useShellCrumb`. Every `page.tsx` is a
+thin server file: `generateMetadata` sets the tab title from `messages/en/shell.json:48-61` (template
+"<page> · DevDigest", `src/app/layout.tsx:13-17`) and the page renders one client view. A page that throws while
+rendering shows `src/app/(shell)/error.tsx:10-16` inside the shell. The sidebar comes from the vendored `NAV`
+(`src/vendor/ui/nav.ts:21-36`): WORKSPACE → Pull Requests; SKILLS LAB → Skills (`g s`), Agents (`g a`),
+Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
 
 ## Routes
 
 ### `/`
-- `AppShell` + "Welcome to DevDigest" (`src/app/page.tsx:22-23`); `useRepos` → `GET /repos` (`src/lib/hooks/core.ts:67-72`).
+- `HomeView` (`src/app/(shell)/page.tsx:11-13`): "Welcome to DevDigest" (`HomeView.tsx:26`, `shell.json:64`);
+  `useRepos` → `GET /repos` (`src/lib/hooks/core.ts:69-74`).
 - ≥ 1 repo: `router.replace` to `/repos/<repos[0].id>/pulls` — the API's first repo, not the stored active
-  repo (`page.tsx:15-19`); meanwhile an "Open <full_name>" button (`page.tsx:39-44`). Loading → skeletons
-  (`page.tsx:24-29`). Zero repos **or a failed fetch** → EmptyState "No repositories yet", CTA "Add repository" → `/onboarding` (`page.tsx:30-37`).
+  repo (`HomeView.tsx:19-23`); meanwhile an "Open <full_name>" button (`:42-46`). Loading → skeletons
+  (`:27-32`). Zero repos **or a failed fetch** → EmptyState "No repositories yet", CTA "Add repository" → `/onboarding` (`:33-40`).
 
 ### `/onboarding`
-- Full-screen `AddRepoView`, no `AppShell` (`src/app/onboarding/page.tsx:7-9`): "Add a repository", field
-  "Repository URL" (`AddRepoView.tsx:77,94`).
-- Button or Enter (`AddRepoView.tsx:100-102,129-137`) → `useAddRepo` → `POST /repos {url}`, invalidates
-  `["repos"]` (`core.ts:74-80`); "Cloning…" while pending (`:136`). Success → `/repos/<id>/pulls`
-  (`:34-35`); failure → inline error plus the global toast (`:36-38,106-122`). Esc, × and Cancel → `/`
-  (`:19-28,74,125-127`).
+- Full-screen `AddRepoView`, outside the shell (`src/app/onboarding/page.tsx:12-14`): "Add a repository", field
+  "Repository URL" (`AddRepoView.tsx:58,76`, `shell.json:82,84`).
+- Button or Enter (`AddRepoView.tsx:82-84,100-108`) → `useAddRepo` → `POST /repos {url}`, invalidates
+  `["repos"]` (`core.ts:76-82`); "Cloning…" while pending (`:107`). Success → `/repos/<id>/pulls`
+  (`:37-38`); failure → inline error plus the global toast (`:39-41,88-93`). Esc, × and Cancel → `/`
+  (`:22-31,55,96-98`).
 
 ### `/repos/:repoId/pulls`
-- `usePulls` → `GET /repos/:id/pulls`, 60 s poll (`core.ts:102-112`); Refresh → `useRefreshRepo` →
-  `POST /repos/:id/refresh` (`pulls/page.tsx:96`, `core.ts:82-91`).
+- `PullsListView` (`pulls/page.tsx:12-14`). `usePulls` → `GET /repos/:id/pulls`, polled every 60 s here
+  (`PullsListView.tsx:28`, `core.ts:112-120`); the GET only reads. On open, with a GitHub token
+  configured, `useAutoSyncPulls` imports the PRs once per repo with `POST /repos/:id/poll`, silently
+  (`PullsListView.tsx:32`, `core.ts:139-157`). Refresh → `useRefreshRepo` → `POST /repos/:id/refresh`
+  and `useSyncPulls` → `POST /repos/:id/poll`, whose failure is toasted (`PullsListView.tsx:91-95`,
+  `core.ts:84-93,122-137`).
 - `?status=all|needs_review|reviewed|stale`, default `needs_review`, always written explicitly
-  (`pulls/page.tsx:38-44`, `constants.ts:34-39`); merged/closed PRs appear only under `all` (`page.tsx:51`).
-  Search and sort are local state, not URL (`page.tsx:46-47`), though the header comment says `?sort` (`page.tsx:2`).
-- Header "Pull Requests" + "{open} open · {needsReview} need review" (`page.tsx:76-80`). Columns
-  (`constants.ts:42-51`, `messages/en/prReview.json:101-110`, uppercased by `styles.ts:105`, rendered by
-  `PRRow.tsx:38-80`): PULL REQUEST (title, `#N`) · AUTHOR · SIZE (`S|M|L · lines`, cut at 100/400,
-  `helpers.ts:4-8`) · SCORE (ring, `—` if never reviewed) · FINDINGS · STATUS · COST · UPDATED (`3h`, `2d`, `helpers.ts:11-21`).
+  (`PullsListView.tsx:35,39-45`, `constants.ts:33-39,57`); merged/closed PRs appear only under `all`
+  (`helpers.ts:36`). `?q=` searches title and number; the box filters as you type and writes `?q` after
+  300 ms (`PullsListView.tsx:47-57`, `constants.ts:65`, `helpers.ts:33-38`). `?sort=newest|oldest`, default
+  `newest`, dropped from the URL when default (`PullsListView.tsx:37,41`, `helpers.ts:41-49`).
+- Header "Pull Requests" + "{open} open · {needsReview} need review" (`PullsListView.tsx:71-76`, `helpers.ts:52-57`). Columns
+  (`constants.ts:42-51`, `messages/en/prReview.json:105-114`, uppercased by `styles.ts:106`, rendered by
+  `PRRow.tsx:43-89`): PULL REQUEST (title, `#N`) · AUTHOR · SIZE (`S|M|L · lines`, cut at 100/400,
+  `helpers.ts:13-17`) · SCORE (ring, `—` if never reviewed) · FINDINGS · STATUS · COST · UPDATED (`3h`, `2d`, `helpers.ts:20-30`).
 - **COST** = total of **all the PR's `done` runs** (every agent, every re-run), `—` when none is known
-  (`PRRow.tsx:76-79`; summed in `../server/src/modules/pulls/routes.ts:138-145`). SCORE and FINDINGS
-  stay the **latest review** (`routes.ts:187-189`).
+  (`PRRow.tsx:85-88`; summed in SQL in `../server/src/modules/pulls/repository.ts:137-147`). SCORE and FINDINGS
+  stay the **latest review** (`repository.ts:122-135`).
 - **FINDINGS**: chips from `findings_by_severity`; `—` never reviewed, `0` none (`FindingsCell.tsx:17-19`).
   The first hover enables `usePrReviews` → `GET /pulls/:id/reviews` (`FindingsCell.tsx:14-15,30`). The
-  popover header reads **"N FINDINGS IN THIS RUN"**: `severityCounts.header` (`prReview.json:125`),
-  uppercased by `src/components/severity-counts/styles.ts:52` (`SeverityPopover.tsx:138-141`). A click
-  inside it does not open the row (`SeverityPopover.tsx:136`).
-- Row click → `/repos/:repoId/pulls/:number` (`PRRow.tsx:35`). States: unknown repo → `RepoNotFound`;
-  skeletons; "Couldn’t load pull requests"; "No pull requests" (`page.tsx:64-70,107-128`).
+  popover header reads **"N FINDINGS IN THIS RUN"**: `severityCounts.header` (`prReview.json:130`),
+  uppercased by `src/components/severity-counts/styles.ts:52` (`SeverityPopover.tsx:139-142`). A click
+  inside it does not open the row (`SeverityPopover.tsx:137`).
+- The title is a link to `/repos/:repoId/pulls/:number` (`PRRow.tsx:47-49`); a click anywhere else on the row
+  goes there too (`:40`). States: unknown repo → `RepoNotFound`; skeletons; "Couldn’t load pull requests";
+  "No pull requests" (`PullsListView.tsx:65,105-122`).
 
 ### `/repos/:repoId/pulls/:number`
-- `:number` → uuid via the cached `usePulls` list (`[number]/page.tsx:33-36`), then `usePullDetail` → `GET /pulls/:id`,
-  `usePrReviews`, `usePrActiveRuns` → `GET /pulls/:id/runs/active`, `usePrRuns` → `GET /pulls/:id/runs`,
-  `useDeleteRun` → `DELETE /runs/:id`, `useCancelRun` → `POST /runs/:id/cancel` (`[number]/page.tsx:35-50`).
-- `?tab=overview|findings|diff`, default `overview` (`:60,137-171`); any other value renders an empty body.
-  `?trace=<runId>` opens `RunTraceDrawer` over any tab (`:61,174-182`). Both go through `router.replace` (`:62-67`).
-- States: `RepoNotFound` (`:90-96`); skeleton (`:98-108`); full-screen "Couldn't load this pull request",
-  also when the number is not in the repo's PR list (`:110-121`).
-- Header (`PR/PrDetailHeader/PrDetailHeader.tsx`): `#N` + title, author, `branch → base`, `+a −d`, status
-  (`:48-78`); "View on GitHub" (`:81-91`); Run Review ▾ (`:92-99`); a merged/closed banner (`:102-110`);
-  hardcoded tabs **Overview**, **Agent runs** (count = findings of all reviews, `[number]/page.tsx:72-77`),
-  **Files changed** (count = `files_count`) (`:111-119`).
-- Run Review ▾ (`PR/RunReviewDropdown/RunReviewDropdown.tsx`): a merged warning on merged/closed PRs (`:66-71`);
-  "Run all enabled agents" (`:72-77`); every agent, disabled ones hinted `· disabled` (`:54-61`), or "No agents
-  yet — create one" (`:61`); "Configure agents…" → `/agents` (`:81`). A pick sends `POST /pulls/:id/review`
-  (`src/lib/hooks/reviews.ts:124-136`), switches to `tab=findings`, refreshes active runs (`[number]/page.tsx:132-133`).
-- Overview: only "Description", the PR body as plain text, nothing when empty (`PR/OverviewTab/OverviewTab.tsx:14-19`).
-  Files changed: "Files changed · N files" + `DiffViewer` (`PR/DiffTab/DiffTab.tsx:60-62`); GitHub review
+- `PrDetailView` (`[number]/page.tsx:12-14`; tab title "PR #N", `:7-10`). `usePrDetail` turns `:number` into the
+  PR's uuid via the cached `usePulls` list (a number the list lacks triggers one silent import,
+  `useAutoSyncPulls`, when a GitHub token is set), then loads `usePullDetail` → `GET /pulls/:id`, `usePrReviews` and
+  `usePrRuns` → `GET /pulls/:id/runs` (`[number]/usePrDetail.ts:12-32`). The live runs are the runs with
+  status `running` (`[number]/helpers.ts:5-7`). `useDeleteRun` → `DELETE /runs/:id` and `useCancelRun` →
+  `POST /runs/:id/cancel` sit in the Agent runs tab (`PR/FindingsTab/FindingsTab.tsx:47-48`).
+- `?tab=overview|findings|diff`, default `overview`; any other value shows Overview
+  (`PrDetailView.tsx:35`, `[number]/helpers.ts:15-17`, `[number]/constants.ts:25-27`). `?trace=<runId>` opens
+  `RunTraceDrawer` over any tab (`PrDetailView.tsx:36,113-123`). Both go through `router.replace` (`:38-43`).
+- States: `RepoNotFound` (`:56`); skeleton (`:58-66`); full-screen "Couldn't load this pull request",
+  also when the number is not in the repo's PR list (`:68-77`).
+- Header (`PR/PrDetailHeader/PrDetailHeader.tsx`): `#N` + title (`:35-40`), author, `branch → base`, `+a −d`,
+  status with the list's colour and label (`:28,41-61`); "View on GitHub" (`:65-73`); Run Review ▾ (`:74`); a
+  merged/closed banner (`:77-82`); tabs **Overview**, **Agent runs** (count = findings of all reviews,
+  `PrDetailView.tsx:44,85`), **Files changed** (count = `files_count`) (`:83-97`, `prReview.json:176-180`).
+- Run Review ▾ (`PR/RunReviewDropdown/RunReviewDropdown.tsx`): a merged warning on merged/closed PRs (`:58-63`);
+  "Run all enabled agents" (`:64-69`); every agent, disabled ones hinted `· disabled` (`:46-52`), or "No agents
+  yet — create one" (`:53`); "Configure agents…" → `/agents` (`:73`). A pick sends `POST /pulls/:id/review`
+  (`src/lib/hooks/reviews.ts:125-135`, which refreshes the PR's runs and reviews) and switches to
+  `tab=findings` (`PrDetailView.tsx:88`).
+- Overview: only "Description", the PR body as plain text, nothing when empty (`PR/OverviewTab/OverviewTab.tsx:16-21`).
+  Files changed: "Files changed · N files" + `DiffViewer` (`PR/DiffTab/DiffTab.tsx:58-60`); GitHub review
   comments via `GET`/`POST /pulls/:id/comments` (`reviews.ts:91-115`), hidden until "Show comments (N)"
-  (`DiffTab.tsx:22,48-57`); posting only on open PRs (`[number]/page.tsx:169`).
+  (`DiffTab.tsx:23,46-55`); posting only on open PRs (`PrDetailView.tsx:109`).
 
 ### `/agents`
-- Server wrapper → `AgentsListView` (`src/app/agents/page.tsx:5-7`). `useAgents` → `GET /agents`; card
-  toggle → `PUT /agents/:id` (`AgentsListView.tsx:20-21,90`); card delete → confirm → `DELETE /agents/:id`
-  (`AgentCard.tsx:27,44`). Search is local, over name and description (`helpers.ts:4-8`).
+- `AgentsListView` (`src/app/(shell)/agents/page.tsx:12-14`). `useAgents` → `GET /agents`, oldest first (`../server/src/modules/agents/repository.ts:36-43`); card
+  toggle → `PUT /agents/:id` (`AgentsListView.tsx:20-21,92`); card delete → confirm modal (`ConfirmDeleteModal`) → `DELETE /agents/:id`
+  (`AgentCard.tsx:30,60-71,86-94`). Search is local, over name and description (`helpers.ts:4-8`). Each card shows
+  "N skills" from the agent's `skill_count`, its enabled skill links (`AgentsListView.tsx:90`, `AgentCard.tsx:78-82`).
 - "Add Agent ▾": "Create from scratch" + five templates, all opening the same `CreateAgentModal`
-  (`AgentsListView.tsx:45-63`, `constants.ts:4`) → `POST /agents` → `/agents/:id?tab=config`
-  (`CreateAgentModal.tsx:16,24-32`); a card click opens the same URL (`AgentsListView.tsx:89`). States:
-  skeletons, "Could not load agents.", "No agents yet" (`AgentsListView.tsx:66-82`).
+  (`AgentsListView.tsx:46-64`, `constants.ts:4`) → `POST /agents` → `/agents/:id?tab=config`
+  (`CreateAgentModal.tsx:17,25-40`); a card click (or its name, a button) opens the same URL
+  (`AgentsListView.tsx:91`, `AgentCard.tsx:40-51`). States: skeletons, "Could not load agents.", "No agents yet"
+  (`AgentsListView.tsx:67-83`).
 
 ### `/agents/:id`
-- Agent list on the left (`useAgents`), editor for `useAgent` → `GET /agents/:id`
-  (`src/app/agents/[id]/page.tsx:23-25`). `?tab=` accepts only `config`, else falls back to it (`:15,27`).
-  `ConfigTab` saves with `PUT /agents/:id` and a success toast, models from `GET /providers/:p/models`
-  (`ConfigTab.tsx:17,41,56-74`).
-- Failed load or missing agent → full-screen "Couldn’t load this agent" (`page.tsx:40-50`). "Add ▾ →
-  Create from scratch" goes to `/agents`, not the modal (`:78`); "Run on a PR…" goes to `/` (`:111-113`).
+- `AgentEditorView` (`agents/[id]/page.tsx:12-14`): agent list on the left (`useAgents`), editor for `useAgent` →
+  `GET /agents/:id` (`AgentEditorView.tsx:25-27`). `?tab=` accepts `config` or `skills`, else falls back to
+  `config` (`AgentEditorView/constants.ts:2-3`, `AgentEditorView.tsx:29-30`). The left cards show "N skills" too
+  (`AgentEditorView.tsx:79`). Config stays mounted while Skills shows, so an unsaved draft survives a tab switch
+  (`AgentEditor/AgentEditor.tsx:25-28`).
+  `ConfigTab` saves only the fields the user changed, with `PUT /agents/:id` and a success toast; the others
+  show the cached agent, so the list's enabled toggle is never undone. Switching provider clears the model
+  and Save waits for a new one. Models come from `GET /providers/:p/models` (`ConfigTab.tsx:29,59-62,76-96`).
+- Failed load or missing agent → full-screen "Couldn’t load this agent" (`AgentEditorView.tsx:43-52`). "Add ▾ →
+  Create from scratch" goes to `/agents`, not the modal (`:69`); "Run on a PR…" goes to `/` (`:103-105`).
+- **Skills tab** (`AgentEditor/_components/SkillsTab/SkillsTab.tsx`): every workspace skill in one list — the
+  agent's live links (`isRowLive`) on top in saved order, then every other skill by name; turning a skill on puts it at
+  the end of that block, off puts it back among the rest, so any live row can reach position 1 (`SkillsTab/helpers.ts:16-38,54-63`); `useSkills` → `GET /skills` and `useAgentSkills` → `GET /agents/:id/skills`.
+  A row: drag handle, toggle (enabled for this agent; a `<label>` names the switch), mono name, type badge, "disabled globally" when the skill
+  itself is off, Open → `/skills/:id`. A skill whose text matches prompt-injection patterns (`injection_detected`)
+  is blocked: red border, "Injection detected" instead of "disabled globally" (tooltip `agents.json:114`), and a
+  disabled toggle, off; it never counts as enabled and a reorder keeps its stored link flag
+  (`SkillsTab.tsx:178-202,233-243`, `SkillsTab/helpers.ts:54-97`). Header: "{linked} of {total} enabled" (`agents.json:95`) and a filter;
+  reordering is off while filtering. Only a live row (on for this agent, not blocked — `isRowLive`) moves: any
+  other row is not draggable, takes no drop, and its handle is disabled with "Enable the skill to reorder it"
+  (`agents.json:101`); a keyboard ↑/↓ steps over such rows to the next live one (`nextLiveIndex`)
+  (`SkillsTab.tsx:80,95,111-113,179-181,213-220`, `SkillsTab/helpers.ts:83-92`). Drag and drop, or keyboard on the handle (Space lifts, ↑/↓ move, Space
+  drops, Esc cancels). Every toggle, drop or keyboard drop sends the whole ordered list once —
+  `useSetAgentSkills` → `POST /agents/:id/skills {links}`, optimistic, one agent's saves in order
+  (`src/lib/hooks/agents.ts:97-125`); nothing is sent on mount. Each save is a new agent version.
+
+### `/skills`
+- `SkillsListView` (`src/app/(shell)/skills/page.tsx:12-14`, title `shell.json:54`). `useSkills` →
+  `GET /skills`; a grid of `SkillCard`s: mono name (a button, "Open {name}"), type badge, source, description,
+  "{n} agents" (agents with it linked and enabled) and the current version `vN` in the footer, a toggle → `PUT /skills/:id {enabled}` (off and disabled while the
+  skill is blocked by `injection_detected`), delete → a confirm modal
+  (`ConfirmDeleteModal`) that names the agent count → `DELETE /skills/:id` (`SkillCard.tsx:37-43,53-64,73-78,102-105,108-120`). Search is local
+  (`SkillsListView.tsx:22`). A card opens `/skills/:id?tab=preview` (`SkillsListView.tsx:62`). Breadcrumb
+  "Skills Lab › Skills". States: skeletons, "Could not load skills.", "No skills yet", "No skill matches …"
+  (`SkillsListView.tsx:45-58`).
+- **Add Skill ▾** (`_components/AddSkillMenu/AddSkillMenu.tsx:32-36`): "Create from scratch" opens
+  `CreateSkillModal` (name, description, type, body → `POST /skills` → `/skills/:id?tab=preview`,
+  `CreateSkillModal.tsx:36-48`); "Import file…" opens `ImportSkillModal` (centered, like the other two). First an
+  optional "Skill name" ("Optional — taken from the file if blank."): a typed name is kept; a blank one is filled
+  with the file's own name once it is parsed (`ImportSkillModal.tsx:144-152`). Below it, a `.md` / `.markdown` / `.zip` up to
+  512 KiB, checked before any request (`ImportSkillModal/constants.ts:2-5`), sent as base64 to
+  `POST /skills/import/preview`, then a preview with a trust warning, editable description / type, the
+  warnings, the skipped files with their reasons and the rendered block (images as labels); only **Save skill**
+  writes, `POST /skills {source: 'imported', imported_from}` (`ImportSkillModal.tsx:50-120,178-184`). A taken
+  name (409 or `name_taken`) marks the name field and blocks Save. "Import from URL" opens
+  `ImportSkillUrlModal` ("Import skill from URL"): an optional "Skill name" first (blank → the
+  first heading), then "URL (https:// only)". **Import from URL** is enabled once the URL starts with `https://` and the name is blank or valid
+  (`ImportSkillUrlModal/helpers.ts:9-18`); it sends `POST /skills/import/url {url, name?}` — no preview, the server
+  fetches, checks and saves — then opens `/skills/:id?tab=config` if the skill is flagged, else `?tab=preview`
+  (`helpers.ts:27-29`); a 409 marks the name field; other failures are toasted and the modal stays open
+  (`ImportSkillUrlModal.tsx:25-50`). Spec: `specs/05-skill-url-import.md`.
+
+### `/skills/:id`
+- `SkillEditorView` (`src/app/(shell)/skills/[id]/page.tsx:12-14`, title `shell.json:55`): skill cards on the
+  left (`useSkills`) with Add Skill ▾, the editor for `useSkill` → `GET /skills/:id`; header: mono name, type
+  badge, `vN`, "disabled" (`SkillEditorView.tsx:87-97`). A blocked skill (`injection_detected`) shows "Injection
+  detected" instead of "disabled", and above the header a full-width alert "INJECTION DETECTED — DO NOT ENABLE" ·
+  "This skill contains prompt injection patterns. It has been automatically blocked."
+  (`SkillEditorView/_components/InjectionBanner/InjectionBanner.tsx:8-19`, `skills.json:260-264`); a clean save
+  removes both. `?tab=config|preview|versions`, default
+  `preview`, through `router.replace` (`SkillEditorView/constants.ts:2-4`, `SkillEditorView.tsx:31-37`).
+  Failed load or missing skill → full-screen "Could not load this skill" (`:45-54`).
+- **Config** stays mounted while another tab shows (`SkillEditor/SkillEditor.tsx:25-27`): enabled (off and disabled
+  while blocked, `ConfigTab/ConfigTab.tsx:91`), name,
+  description with a directive hint (the "When to apply" line), type, and the body in a line-numbered editor
+  headed `<name>.md`, "unsaved" and "{n} tokens" — `ceil(chars / 4)` of the rendered block
+  (`ConfigTab/ConfigTab.tsx:44-50,111-120`). Save sends only the fields that differ, `PUT /skills/:id`; Cancel
+  drops the draft (`:58-80,122-133`).
+- **Preview**: "Rendered as the reviewing agent receives it." and the block `### name` / `When to apply:` /
+  body, the same format as the engine (`src/lib/skills.ts:26-30`), with its tokens
+  (`PreviewTab/PreviewTab.tsx:13-30`).
+- **Versioning** (`?tab=versions`): `useSkillVersions` → `GET /skills/:id/versions`, newest first: `vN`, note, date, "Current" or
+  **Diff** (a line diff against the current skill, in a modal) and **Restore** (a confirm modal "Restore vN?",
+  `skills.json:222-223` → `POST /skills/:id/versions/:version/restore`, a new version; the modal closes on success)
+  (`VersionsTab/VersionsTab.tsx:26-27,32-39,51-86`, `VersionsTab/_components/RestoreVersionModal/RestoreVersionModal.tsx:26-43`).
+- **Stats** is hidden until HW8: no tab, and `?tab=stats` falls back to Preview (`SkillEditor/constants.ts:10-19`).
+  `StatsTab` ("Used by N agents", `useSkillAgents` → `GET /skills/:id/agents`, `StatsTab/StatsTab.tsx:15-45`) is
+  kept for then.
+
+### `/repos/:repoId/conventions`
+- `ConventionsView` (`src/app/(shell)/repos/[repoId]/conventions/page.tsx:12-14`, title `shell.json:56`): breadcrumb
+  "Skills Lab › Conventions", heading "Conventions in" + the repo name (mono); `useConventions` →
+  `GET /repos/:id/conventions` (`src/lib/hooks/conventions.ts:29-36`), polled every 2 s while `latest_scan` is
+  `queued`/`running` (`:34`, `isScanActive` in `src/lib/conventions.ts`). Spec:
+  [`04-conventions.md`](./04-conventions.md).
+- No scan yet → EmptyState "No conventions yet", CTA **Run scan**; once a scan exists the header has
+  **Re-scan** and the subtitle "Detected from N sample files · last scan …" (the latest done scan) — two
+  separate buttons, both `POST /repos/:id/conventions/extract`, which answers 202 at once and queues a
+  background scan (or returns the one already active). "Scanning…" and disabled actions follow
+  `latest_scan`, not the request, so they survive a reload (`ConventionsView.tsx:47,65-96`). A status line
+  under the subtitle says "Scan queued…", "Scanning… started {relative}" (a 1 s clock) or "Last scan failed:
+  {error}" (`_components/ScanStatus/ScanStatus.tsx`, `ConventionsView.tsx:70`). A scan with no grounded
+  candidate shows a one-line note (`:97`).
+- Toolbar: **Deselect all** (disabled at 0) → `POST /repos/:id/conventions/deselect-all`, "N of M accepted", and
+  **Create skill** only when ≥ 1 is accepted (`ConventionsView.tsx:100-117`).
+- `CandidateCard`: the rule, `path:start-end` with a copy-snippet button, the snippet, "Confidence" bar + %
+  (green ≥ 85, amber ≥ 65); **Accept** ⇄ **Accepted**, **Reject** (the card leaves; stays gone after a reload),
+  **Edit** (inline input, Enter/Save → `PUT /conventions/:id {rule}`, Escape/Cancel restores)
+  (`CandidateCard.tsx:45-49,98,107-131`).
+- **Create skill** opens `CreateConventionSkillModal`: prefilled from `GET /repos/:id/conventions/skill-draft`;
+  banner "Merged from N accepted conventions in <repo>…", Name (taken → hint, 409), Description, Type,
+  Enabled, the body in the shared line-numbered editor with "unsaved" and "{n} tokens"; footer "Saved as v1 ·
+  added to Skills Lab", Cancel / Create skill → `POST /repos/:id/conventions/skill` →
+  `/skills/:id?tab=preview` (`CreateConventionSkillModal.tsx:51-52,74-86,123-172`).
 
 ### `/settings/:section`
-- Server wrapper → `SettingsView` (`src/app/settings/[section]/page.tsx:5-7`). Sub-nav from vendored `SETTINGS_SECTIONS`:
-  `api-keys` "API Keys", `models` "Feature Models" (`src/vendor/ui/nav.ts:39-42`, `SettingsView.tsx:28-35`).
+- `SettingsView` (`src/app/(shell)/settings/[section]/page.tsx:12-14`). Sub-nav from vendored `SETTINGS_SECTIONS`:
+  `api-keys` "API Keys", `models` "Feature Models" (`src/vendor/ui/nav.ts:46-49`, `SettingsView.tsx:28-35`).
 - `api-keys`: four rows, OpenAI, Anthropic, OpenRouter, GitHub PAT (`SettingsApiKeys/constants.ts:11-16`),
   each with Configured / Not set from `GET /settings/secrets-status` and "Test connection" →
   `POST /settings/test-connection` (`SettingsApiKeys.tsx:39-50,83,93`).
 - `models`: one picker per feature, each pick `PUT /settings`, options from
   `GET /providers/openrouter/models` (`SettingsModels.tsx:22-33,39`). Any other section → EmptyState
-  titled with the **first** section's label ("API Keys") and `settings.fallbackBody` (`SettingsView.tsx:21,42-48`).
+  titled with the **first** section's label ("API Keys") and `settings.fallbackBody` (`SettingsView.tsx:21,43-47`).
 
 ## PR detail — Agent runs tab
 
-`PR/FindingsTab/FindingsTab.tsx`, top to bottom. Section titles and their right-hand notes are hardcoded JSX.
+`PR/FindingsTab/FindingsTab.tsx`, top to bottom. Section titles and notes are `prReview.findingsTab.*`.
 
-1. **Live review** while the server reports running runs (`:86-111`; `liveRunIds` from `usePrActiveRuns`,
-   `[number]/page.tsx:48`): "Cancel" (all) and "Open run trace" (first) above `RunStatus`'s SSE log (`:109`).
-2. **"Review in progress…"** banner while any run is live (`:113-121`).
-3. **"Lethal Trifecta detected"** + "N finding(s)" if a finding has `kind: lethal_trifecta` (`:123-131`, `[number]/page.tsx:76`).
-4. **Timeline**, "runs & commits · newest first", when there are runs or commits (`:133-152`).
-5. **Review runs**, "grouped by run · newest first" (`:154-159`): one `ReviewRunAccordion` per review, the
-   first open (`:170-181`); EmptyState "No findings yet" when there are none and nothing runs (`:160-167`).
+1. **Live review** while any of the PR's runs is `running` (`:63-88`; live ids from the run history,
+   `[number]/usePrDetail.ts:30`): "Cancel" (all) and "Open run trace" (first) above `RunStatus`'s SSE log (`:86`).
+   When the streams end, `useRunSettled` refreshes the PR's runs, reviews, traces and PR lists
+   (`src/lib/hooks/reviews.ts:51-58`).
+2. **"Review in progress…"** banner while any run is live (`:90-96`).
+3. **"Lethal Trifecta detected"** + "N findings" if a finding has `kind: lethal_trifecta` (`:98-106`, `PrDetailView.tsx:45`).
+4. **Timeline**, "runs & commits · newest first", when there are runs or commits (`:108-126`).
+5. **Review runs**, "grouped by run · newest first" (`:128-146`): one `ReviewRunAccordion` per review.
+   The newest review opens on load, and so does a review that arrives later (a run just finished); what the
+   user opened stays open (`FindingsTab/useOpenRuns.ts:23-29`). EmptyState "No findings yet" when there are none
+   and nothing runs (`:131-132`).
 
 **Timeline row** (`PR/RunHistory/RunHistory.tsx`), between dashed commit rows (short sha, first message
-line, author, time; `:128-157`), newest first (`:116-123`):
+line, author, time; `:130-159`), newest first (`:118-125`):
 - outcome badge `running` / `error` / `cancelled`; a `done` run reads `rejected` (blockers), `reviewed`
-  (findings) or `approved` (`:24-38,166-168`); a score ring for `done` (`:169`);
-- the agent name, a button that opens and scrolls to its Review run (`:172-190`,
-  `ReviewRunAccordion.tsx:48-54`); `provider/model` (`:191-193`); the error of a `failed` run (`:195-202`);
-- a `done` run with findings: severity chips + hover popover, else "N finding(s)" (`:203-218`); time and
-  **cost for every run**, `$0.0013 · 8.2K→1.3K`, `—` when none (`:220-224`);
-- the FileText icon opens `?trace=` (`:225-233`), and the row itself has no click (`:165`); the Trash icon
-  (not while running) → confirm → `DELETE /runs/:id` (`:234-244`, `[number]/page.tsx:152-155`).
+  (findings) or `approved` (`:25-39,168-170`); a score ring for `done` (`:171`);
+- the agent name, a button that opens and scrolls to its Review run (`:174-192`, `useOpenRuns.ts:41-47`,
+  `ReviewRunAccordion.tsx:50-55`); `provider/model` (`:193-195`); the error of a `failed` run (`:197-204`);
+- a `done` run with findings: severity chips + hover popover, else "N findings" (`:205-220`); time and
+  **cost for every run**, `$0.0013 · 8.2K→1.3K`, `—` when none (`:222-226`);
+- the FileText icon opens `?trace=` (`:227-235`), and the row itself has no click (`:167`); the Trash icon
+  (not while running) → a confirm modal "Delete run" → `DELETE /runs/:id` (`:236-246`, `FindingsTab.tsx:124,148-156`,
+  `prReview.json:126,142`).
 
 **Review run card** (`PR/ReviewRunAccordion/ReviewRunAccordion.tsx`):
-- header: agent; verdict with `_` → space, e.g. `request changes` (`:92-96`); "N findings · N blockers" (blockers =
-  CRITICAL not rejected, `:57,97-100`); detailed cost (`:102-108`); score (`:109-113`); time; Trash → confirm → `DELETE /reviews/:id` (`:117-137`).
+- header: one toggle button, `aria-expanded` (`:66-95`): agent; verdict label, e.g. `request changes`
+  (`:69-73`, `prReview.json:161-165`), coloured by `VERDICT_META` (`[number]/constants.ts:10-22`; `comment` is
+  `--info`, as in the VerdictBanner); "N findings · N blockers" (blockers = CRITICAL not rejected, `:58,74-77`);
+  detailed cost (`:79-85`); score (`:86-90`); time (`:91-93`). Beside it, Trash → a confirm modal "Delete review run" →
+  `DELETE /reviews/:id` (`:96-105,131-139`, `prReview.json:169-170`).
 - expanded, top to bottom: `VerdictBanner` (verdict, "N findings", agent, summary, score ring + "PR SCORE";
-  `VerdictBanner.tsx:36-55`), then `FindingsPanel`:
+  `VerdictBanner.tsx:36-54`), then `FindingsPanel`:
   - pill row **"N CRITICAL · N WARNING · N SUGGESTION"**, present severities only, counting accepted and
-    rejected findings too (`FindingsPanel.tsx:65-80`, `prReview.json:34-38`, `severity-counts/helpers.ts:7-16`);
-  - filter buttons **Critical / Warning / Suggestion**, one at a time, second click clears (`FindingsPanel.tsx:43-46,82-95`);
-    "Hide low confidence" hides < 0.65 (`:96-99`, `FindingsPanel/constants.ts:12`); none left → "No findings match" (`:103-104`);
-  - cards sorted by severity, the first expanded (`FindingsPanel/helpers.ts:5-16`, `FindingsPanel.tsx:106-117`).
+    rejected findings too (`FindingsPanel.tsx:73-88`, `prReview.json:36-40`, `severity-counts/helpers.ts:10-16`);
+  - filter buttons **Critical / Warning / Suggestion**, one at a time, second click clears (`FindingsPanel.tsx:48-51,90-103`);
+    "Hide low confidence" hides < 0.65 (`:104-107`, `FindingsPanel/constants.ts:12`); none left → "No findings match" (`:111-112`);
+  - cards sorted by severity, the first expanded (`FindingsPanel/helpers.ts:5-16`, `FindingsPanel.tsx:114-125`).
 - finding card (`PR/FindingCard/FindingCard.tsx`): severity, title, category, `accepted` / `rejected` tag
-  (`:64-65`), `file:line` linked to GitHub (`:68-70`), confidence; expanded: rationale, "Suggested fix",
-  **Accept** / **Reject** (`:91-111`). Reject is copy only; it posts `/findings/:id/dismiss`
-  (`reviews.ts:153-155`, `prReview.json:6-7`). `j`/`k`/`a`/`d` act on the focused card (`FindingsPanel.tsx:49-61`).
+  (`:64-65`), `file:line` linked to GitHub (`:68-70`), confidence, an expand button (`:75-86`); expanded:
+  rationale, "Suggested fix", **Accept** / **Reject** (`:103-123`). A click changes the card at once and rolls
+  back if the server refuses; only that card's buttons wait (`reviews.ts:158-194`, `FindingsPanel.tsx:120`).
+  Reject is copy only; it posts `/findings/:id/dismiss` (`reviews.ts:163-167`, `prReview.json:6-7`).
+  `j`/`k`/`a`/`d` act on the focused card of one run only — the last one opened (`FindingsPanel.tsx:54-69`,
+  `FindingsTab.tsx:141`).
 
 ## Copy that e2e flows assert
 
@@ -141,18 +274,19 @@ No `data-testid`s: flows match visible text and URLs. "Seed" = `../server/src/db
 
 | Flow | Asserts | Lives in |
 | --- | --- | --- |
-| `01-app-boot` | URL `/pulls`; "Pull Requests" | Redirect `src/app/page.tsx:17`; heading `prReview.json:77`. The sidebar item reads the same (`src/vendor/ui/nav.ts:25`), so the text alone proves little |
-| `02`, `04`, `05` | "Add rate limiting to public API endpoints"; URL `/pulls/482` | Seed `:105-106`; `PRRow.tsx:35,41`; `PrDetailHeader.tsx:54`. The row is under the default `needs_review` filter because the seed PR was never reviewed (`../server/src/modules/pulls/status.ts:51`) |
-| `03-agents` | "Security Reviewer" | Seed `:194`, via `AgentCard` |
-| `04-pr-findings` | button "Agent runs"; `tab=findings`; "request changes"; "2 findings"; "Hardcoded Stripe secret key in commit" | `PrDetailHeader.tsx:117` (a plain `<button>` whose name includes the count, `src/vendor/ui/kit/Tabs.tsx:25-49`); `[number]/page.tsx:68`; `ReviewRunAccordion.tsx:94` (seed `:142`); `ReviewRunAccordion.tsx:98` and `prReview.json:25` (seed `:150-175`); seed `:158`, visible because the first run is open (`FindingsTab.tsx:175`) |
-| `05-pr-diff` | button "Files changed"; `tab=diff`; "src/config.ts" | `PrDetailHeader.tsx:118`; seed `:123` via `DiffViewer` |
-| `06-onboarding` | "Add a repository"; "Repository URL" | Hardcoded, `AddRepoView.tsx:77,94` |
-| `07-settings` | URLs `/settings/api-keys`, `/settings/models`; "API Keys"; "Feature Models" | `nav.ts:40-41` (sub-nav, crumb) and `messages/en/settings.json:6,24` (section titles) |
+| `01-app-boot` | URL `/pulls`; "Pull Requests" | Redirect `src/app/(shell)/_components/HomeView/HomeView.tsx:21`; heading `prReview.json:81`. The sidebar item reads the same (`src/vendor/ui/nav.ts:25`), so the text alone proves little |
+| `02`, `04`, `05` | "Add rate limiting to public API endpoints"; URL `/pulls/482` | Seed `:121-122`; the row's title link `PRRow.tsx:47-49`; `PrDetailHeader.tsx:39`. The row is under the default `needs_review` filter because the seed PR was never reviewed (`../server/src/modules/pulls/domain.ts:55`) |
+| `03-agents` | "Security Reviewer" | Seed `:303`, via `AgentCard` |
+| `04-pr-findings` | button "Agent runs"; `tab=findings`; "request changes"; "2 findings"; "Hardcoded Stripe secret key in commit" | `PrDetailHeader.tsx:91`, `prReview.json:178` (a plain `<button>` whose name includes the count, `src/vendor/ui/kit/Tabs.tsx:25-49`); `PrDetailView.tsx:37-42,87`; `ReviewRunAccordion.tsx:71` and `prReview.json:162` (seed `:158`); `ReviewRunAccordion.tsx:75` and `prReview.json:166` (seed `:166-191`); seed `:174`, visible because the newest run opens on load (`useOpenRuns.ts:23-29`) |
+| `05-pr-diff` | button "Files changed"; `tab=diff`; "src/config.ts" | `PrDetailHeader.tsx:95`, `prReview.json:179`; seed `:139` via `DiffViewer` |
+| `06-onboarding` | "Add a repository"; "Repository URL" | `AddRepoView.tsx:58,76` → `messages/en/shell.json:82,84` |
+| `07-settings` | URLs `/settings/api-keys`, `/settings/models`; "API Keys"; "Feature Models" | `nav.ts:47-48` (sub-nav, crumb) and `messages/en/settings.json:6,24` (section titles) |
+| `08-skills-lab` | URL `/skills`; "branch-coverage"; button "Open branch-coverage"; `tab=preview`; "Rendered as the reviewing agent receives it."; "When to apply:"; button "Open Test Quality Reviewer"; `tab=config`; button "Skills" (exact); `tab=skills`; "3 of 7 enabled" | Seeded skill `../server/src/db/seed-skills.ts:21`; the card's name button `SkillCard.tsx:53-64` with `skills.json:109`; `SkillsListView.tsx:62`; `skills.json:211`; `src/lib/skills.ts:28`; `AgentCard.tsx:43` with `agents.json:7` (agent seed `:323-334`); the Skills tab `agents.json:51` (the sidebar "Skills" is a link, so `--exact` button finds the tab); `agents.json:95`, three skills linked by seed `:407-422` |
 
 ## When you change this
 
 - **Copy in the table:** update the flow in `../../e2e/specs/` in the same commit and run
-  `cd e2e && npm run e2e:hermetic`. Moving hardcoded copy into `messages/en/` is fine if the text is identical.
+  `cd e2e && npm run e2e:hermetic`. Moving copy between message files is fine if the text is identical.
 - **Routes, hooks, URL:** a new route or tab goes here and into the route map in `../README.md`; a new
   hook or query key into the table in `../docs/ui-architecture.md`. The `?tab` keys, the `?status`
   default and `?trace` are contract: flows wait on `tab=findings` and `tab=diff`.

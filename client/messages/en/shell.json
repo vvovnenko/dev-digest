@@ -11,8 +11,10 @@
     "light": "light"
   },
   "removeRepo": {
-    "confirm": "Remove {name} from DevDigest?\n\nThis only removes it from DevDigest (and its imported PRs). Nothing is deleted on GitHub, and your local clone on disk is left untouched.",
-    "fallbackName": "this repository"
+    "title": "Remove repository",
+    "confirm": "{name} and its imported PRs will be removed from DevDigest. Nothing is deleted on GitHub, and your local clone on disk is left untouched.",
+    "action": "Remove",
+    "fallbackName": "This repository"
   },
   "nav": {
     "pulls": "Pull Requests",
@@ -40,6 +42,52 @@
     "reply": "Reply",
     "viewOnGitHub": "View on GitHub",
     "postedToGitHub": "Posts to GitHub immediately",
-    "outdatedTitle": "{count} comment(s) on older revisions"
+    "outdatedTitle": "{count, plural, one {# comment} other {# comments}} on older revisions",
+    "addComment": "Add a comment on this line"
+  },
+  "titles": {
+    "home": "Home",
+    "pulls": "Pull Requests",
+    "pullRequest": "PR #{number}",
+    "agents": "Agents",
+    "agentEditor": "Agent editor",
+    "skills": "Skills",
+    "skillEditor": "Skill editor",
+    "conventions": "Conventions",
+    "settings": "Settings",
+    "onboarding": "Add repository",
+    "notFound": "Not found",
+    "error": "Something went wrong"
+  },
+  "home": {
+    "breadcrumb": "DevDigest",
+    "title": "Welcome to DevDigest",
+    "subtitle": "Local-first AI PR review",
+    "emptyTitle": "No repositories yet",
+    "emptyBody": "Add a repository to start reviewing pull requests. Set your API keys once in Settings → API Keys.",
+    "emptyCta": "Add repository",
+    "redirecting": "Taking you to your repository…",
+    "open": "Open {name}"
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "body": "This screen failed to render. Try again — if it keeps failing, reload the page.",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "There is nothing at this address.",
+    "home": "Go to DevDigest"
+  },
+  "addRepo": {
+    "brand": "DevDigest",
+    "close": "Close",
+    "title": "Add a repository",
+    "intro": "Paste a GitHub repository URL — DevDigest clones it locally and imports open PRs. API keys aren’t needed here; set them once in <link>Settings → API Keys</link>.",
+    "urlLabel": "Repository URL",
+    "urlHint": "e.g. https://github.com/acme/payments-api",
+    "urlPlaceholder": "https://github.com/owner/repo",
+    "addError": "Could not add repository",
+    "cancel": "Cancel",
+    "submit": "Add repository",
+    "submitting": "Cloning…",
+    "footer": "API keys live in Settings · <kbd>esc</kbd> to close"
   }
 }

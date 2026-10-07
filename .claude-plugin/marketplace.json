@@ -1,0 +1,12 @@
+{
+  "name": "devdigest",
+  "owner": { "name": "Volodymyr Vovnenko" },
+  "description": "Code-review skills from DevDigest, packaged as Claude Code plugins.",
+  "plugins": [
+    {
+      "name": "devdigest-review-skills",
+      "source": "./plugins/devdigest-review-skills",
+      "description": "Review rubrics for pull requests: error handling."
+    }
+  ]
+}

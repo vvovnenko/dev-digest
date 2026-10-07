@@ -41,6 +41,19 @@ export DATABASE_URL="postgres://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PORT}/${PG_
 export API_PORT WEB_PORT
 export NEXT_PUBLIC_API_BASE="http://localhost:${API_PORT}"
 export E2E_BASE_URL="http://localhost:${WEB_PORT}"
+# The hermetic web builds into its own dir: sharing client/.next with a running
+# dev web rewrote it under that server (404s, "missing required error components").
+export NEXT_DIST_DIR=".next-e2e"
+# The API answers reviews with a deterministic fake LLM (no key, no network), so
+# flows can run a review end to end. The server refuses it under NODE_ENV=production.
+export DEVDIGEST_FAKE_LLM=1
+# The secrets store and clone dir default to ~/.devdigest — your real keys and
+# clones. A throwaway dir and blank tokens keep the API off GitHub, as in CI;
+# dotenv never refills a set-but-empty variable from server/.env.
+E2E_STATE_DIR="$(mktemp -d)"
+export DEVDIGEST_SECRETS_PATH="$E2E_STATE_DIR/secrets.json"
+export DEVDIGEST_CLONE_DIR="$E2E_STATE_DIR/clones"
+export GITHUB_TOKEN="" GITHUB_PAT=""
 
 log()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
@@ -54,6 +67,11 @@ command -v agent-browser >/dev/null || \
 # --- teardown trap (installed before we start anything) ----------------------
 SERVER_PID=""
 WEB_PID=""
+# `next dev` with its own distDir rewrites client/tsconfig.json (adds
+# .next-e2e/types to include, reformats it) and client/next-env.d.ts; copies are
+# taken before it starts and put back on exit, so a run leaves the tree clean.
+CLIENT_FILES_SAVED=0
+SAVE_DIR="$(mktemp -d)"
 # Recursively kill a process and all its descendants. `pnpm exec tsx` / `next dev`
 # spawn the real listener as a GRANDCHILD, so a plain `kill $PID` + `pkill -P`
 # leaves it orphaned (port stays bound). Walk the tree leaves-first instead.
@@ -69,6 +87,11 @@ cleanup() {
   log "tearing down hermetic e2e stack"
   kill_tree "$WEB_PID"
   kill_tree "$SERVER_PID"
+  if [ "$CLIENT_FILES_SAVED" -eq 1 ]; then
+    cp "$SAVE_DIR/tsconfig.json" client/tsconfig.json
+    cp "$SAVE_DIR/next-env.d.ts" client/next-env.d.ts
+  fi
+  rm -rf "$SAVE_DIR" "$E2E_STATE_DIR"
   # Backstop: reap whatever still holds the ISOLATED ports (never the dev stack's
   # 3000/3001 — only the alt ports this script started).
   for port in "$WEB_PORT" "$API_PORT"; do
@@ -88,7 +111,7 @@ docker run -d --rm --name "$PG_CONTAINER" \
   -e POSTGRES_USER="$PG_USER" \
   -e POSTGRES_PASSWORD="$PG_PASS" \
   -e POSTGRES_DB="$PG_DB" \
-  -p "${PG_PORT}:5432" \
+  -p "127.0.0.1:${PG_PORT}:5432" \
   --health-cmd="pg_isready -U $PG_USER -d $PG_DB" \
   --health-interval=5s --health-timeout=5s --health-retries=10 \
   "$PG_IMAGE" >/dev/null
@@ -107,7 +130,7 @@ log "Postgres healthy"
 install_if_needed() {
   if [ ! -d "$1/node_modules" ]; then
     log "installing deps in $1"
-    (cd "$1" && pnpm install)
+    (cd "$1" && pnpm install --frozen-lockfile)
   fi
 }
 install_if_needed server
@@ -115,6 +138,8 @@ install_if_needed client
 # reviewer-core's RAW source is imported by the API at runtime (tsconfig alias);
 # without its deps the API crashes at boot with ERR_MODULE_NOT_FOUND. It uses npm.
 [ -d reviewer-core/node_modules ] || { log "installing deps in reviewer-core"; (cd reviewer-core && npm ci); }
+# The runner itself (tsx) — without it `npm test` below can't start. npm too.
+[ -d e2e/node_modules ] || { log "installing deps in e2e"; (cd e2e && npm ci); }
 
 # --- migrate + seed the ISOLATED db ------------------------------------------
 # Hard guard: never let migrate/seed run against anything but the isolated port.
@@ -128,8 +153,8 @@ log "seeding demo data (isolated db)"
 (cd server && pnpm db:seed)
 
 # --- API on :$API_PORT -------------------------------------------------------
-# tsx directly (not `pnpm start`, which needs a build; not `tsx watch`, to avoid
-# a mid-suite watcher restart).
+# tsx directly, not `tsx watch` (`pnpm dev`): a watcher could restart the API
+# mid-suite.
 log "starting API on :$API_PORT"
 (cd server && pnpm exec tsx src/server.ts) &
 SERVER_PID=$!
@@ -144,7 +169,9 @@ done
 log "API healthy"
 
 # --- web on :$WEB_PORT (next dev → reads NEXT_PUBLIC_API_BASE from env) -------
-log "starting web on :$WEB_PORT"
+log "starting web on :$WEB_PORT (dist dir client/$NEXT_DIST_DIR)"
+cp client/tsconfig.json client/next-env.d.ts "$SAVE_DIR/"
+CLIENT_FILES_SAVED=1
 (cd client && pnpm exec next dev -p "$WEB_PORT") &
 WEB_PID=$!
 log "waiting for web :$WEB_PORT"

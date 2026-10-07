@@ -37,12 +37,27 @@ const VERDICT_RANK: Record<string, number> = {
 };
 
 /**
+ * One finding per (file, lines, title): chunks overlap in context (repo map,
+ * callers, PR description), so the model can report the same issue twice —
+ * which would double its score penalty and its blocker count.
+ */
+export function dedupeFindings(findings: Finding[]): Finding[] {
+  const seen = new Set<string>();
+  return findings.filter((f) => {
+    const key = JSON.stringify([f.file, f.start_line, f.end_line, f.title.trim().toLowerCase().replace(/\s+/g, ' ')]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Merge N partial Reviews (one per mapped file/chunk) into a single Review:
- * concat findings, take the worst verdict, mean score, joined summaries.
+ * concat and de-duplicate findings, take the worst verdict, mean score, joined summaries.
  */
 export function reduceReviews(partials: Review[]): Review {
-  if (partials.length === 1) return partials[0]!;
-  const findings = partials.flatMap((p) => p.findings);
+  if (partials.length === 1) return { ...partials[0]!, findings: dedupeFindings(partials[0]!.findings) };
+  const findings = dedupeFindings(partials.flatMap((p) => p.findings));
   let verdict: Review['verdict'] = 'approve';
   for (const p of partials) {
     if ((VERDICT_RANK[p.verdict] ?? 0) > (VERDICT_RANK[verdict] ?? 0)) verdict = p.verdict;
@@ -54,19 +69,18 @@ export function reduceReviews(partials: Review[]): Review {
   return { verdict, score, summary, findings };
 }
 
-/** Extract the slice of the unified diff for a single file (for map chunks). */
+/**
+ * Extract the slice of the unified diff for a single file (for map chunks).
+ * Only the file's own `diff --git … b/<path>` block: a substring match would
+ * also take `lib/x.ts` for `x.ts` (its header contains `b/x.ts` too). Returns
+ * '' when the raw diff has no block for the path — the caller skips it.
+ */
 export function sliceDiff(diff: UnifiedDiff, path: string): string {
-  const lines = diff.raw.split('\n');
   const out: string[] = [];
   let capture = false;
-  for (const line of lines) {
-    if (line.startsWith('diff --git'))
-      capture = line.includes(`b/${path}`) || line.includes(` ${path}`);
+  for (const line of diff.raw.split('\n')) {
+    if (line.startsWith('diff --git ')) capture = line.endsWith(` b/${path}`);
     if (capture) out.push(line);
   }
-  if (out.length > 0) return out.join('\n');
-  // fallback: synthesize from the file's hunks
-  const f = diff.files.find((x) => x.path === path);
-  if (!f) return diff.raw;
-  return `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}`;
+  return out.join('\n');
 }

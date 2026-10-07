@@ -73,8 +73,8 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'conventions',
     label: 'Conventions',
     description: 'Extracts coding conventions from the repo.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-5.4',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
 ];
 
@@ -99,7 +99,8 @@ export type SettingsKnown = z.infer<typeof SettingsKnown>;
 export const Settings = SettingsKnown.passthrough();
 export type Settings = z.infer<typeof Settings>;
 
-export const SettingsUpdate = Settings.partial();
+/** An update names only known keys: arbitrary keys would each become a stored row. */
+export const SettingsUpdate = SettingsKnown.partial().strict();
 export type SettingsUpdate = z.infer<typeof SettingsUpdate>;
 
 // ---- Connection test ----
@@ -108,7 +109,7 @@ export type ConnTestProvider = z.infer<typeof ConnTestProvider>;
 
 export const ConnTestRequest = z.object({
   provider: ConnTestProvider,
-  /** Optional API key/PAT to persist and then test (BYO key from the UI). */
+  /** Optional API key/PAT to test and, only if it works, persist (BYO key from the UI). */
   key: z.string().min(1).optional(),
 });
 export type ConnTestRequest = z.infer<typeof ConnTestRequest>;
@@ -269,7 +270,7 @@ export type IndexStatus = z.infer<typeof IndexStatus>;
 
 // ---- Run request (review trigger; owned by A2, contract lives here) ----
 export const RunRequest = z.object({
-  agentId: z.string().optional(),
+  agentId: z.string().uuid().optional(),
   all: z.boolean().optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;

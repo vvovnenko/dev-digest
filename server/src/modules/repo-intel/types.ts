@@ -36,7 +36,7 @@ export interface IndexResult {
   filesIndexed: number;
   filesSkipped: number;
   durationMs: number;
-  reason?: string;
+  reason?: string | undefined;
 }
 
 export interface IndexState extends IndexResult {
@@ -45,8 +45,8 @@ export interface IndexState extends IndexResult {
   indexerVersion: number;
   updatedAt: Date;
   /** True when the layer is running on the ripgrep fallback. */
-  degraded?: boolean;
-  degradedReason?: DegradedReason;
+  degraded?: boolean | undefined;
+  degradedReason?: DegradedReason | undefined;
 }
 
 // ---------------------------------------------------------------------------

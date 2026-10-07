@@ -66,11 +66,11 @@ Each package has its own README with deeper diagrams:
 ## What works on day 1
 
 - **Local launch** — one command brings up Postgres (Docker) + API + web.
-- **Settings** — store your LLM API key (OpenAI / Anthropic) and GitHub token.
+- **Settings** — store your LLM API keys (OpenRouter, which the seeded agents use; OpenAI / Anthropic for agents you switch to them) and GitHub token.
 - **Add repository** — paste a repo URL; the server clones and indexes it.
-- **Import pull requests** — pull open PRs and their diff, commits, body, and linked issue.
+- **Import pull requests** — pull all of a repo's PRs (open, merged, closed) and their diff, commits, body, and linked issue.
 - **View diff** — GitHub-like diff in the browser.
-- **Agents** — two built-in reviewers (General + Security); create/edit your own (model + system prompt).
+- **Agents** — five built-in reviewers (General, Security, Performance, Test Quality — added in L02 with three linked skills — and API Contract, added in HW2 with four) on OpenRouter; create/edit your own (model + system prompt), and attach reusable skills from the Skills Lab (L02).
 - **Run a review** — single-pass analysis returning structured findings (severity + score), with the grounding gate and repo-map context working from the start.
 
 ## What you build in the course
@@ -101,17 +101,19 @@ These are intentionally **not** in the starter — each lesson adds one back:
 This script:
 1. starts Postgres (`docker compose up -d`) and waits until it's healthy,
 2. creates `server/.env` and `client/.env` from `.env.example` if missing,
-3. installs deps in `server/` and `client/` (only when `node_modules` is absent),
+3. installs deps where `node_modules` is absent — `pnpm install --frozen-lockfile` in `server/`
+   and `client/`, `npm ci` in `reviewer-core/` (the API runs its source),
 4. applies DB migrations and seeds demo data,
 5. launches the API (`:3001`) and the web app (`:3000`).
 
-Open **http://localhost:3000**. Press **Ctrl-C** to stop the dev servers —
-Postgres keeps running (`docker compose down` to stop it).
+Open **http://localhost:3000**. Press **Ctrl-C** to stop the dev servers (the API's whole
+process tree, so nothing keeps `:3001`) — Postgres keeps running (`docker compose down` to stop it).
 
 Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
 
-> Add your keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
-> `GITHUB_TOKEN`) or via the Settings UI at runtime.
+> Add your keys in `server/.env` — `OPENROUTER_API_KEY` (the seeded agents run on OpenRouter),
+> `GITHUB_TOKEN`; `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` only for agents you switch to them —
+> or via the Settings UI at runtime.
 
 ## Manual steps (what the script does)
 
@@ -154,8 +156,10 @@ Postgres); everything else is hermetic. The browser e2e flows live in
 - **`relation ... does not exist` / API errors on first run** — migrations weren't
   applied. The server does **not** migrate on boot: run `cd server && pnpm db:migrate`.
 - **Port 5432 already in use** — another Postgres is running. Stop it, or change the
-  host port in `docker-compose.yml`.
+  host port in `docker-compose.yml` (published on `127.0.0.1` only).
 - **`vector` type errors** — the pgvector extension is enabled by migration `0000`;
   make sure migrations ran against the Dockerized DB, not a different one.
-- **Reset everything** — `docker compose down -v` drops the volume, then re-run
-  `./scripts/dev.sh`.
+- **Reset everything** — destructive: `docker compose down -v` deletes the
+  `devdigest_pgdata` volume, i.e. every imported repo, review and agent edit, for
+  good; then re-run `./scripts/dev.sh`. To try something on an empty DB without
+  losing yours, run `./scripts/e2e.sh`, which boots its own throwaway stack.

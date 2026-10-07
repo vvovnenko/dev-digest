@@ -4,6 +4,12 @@ import { schema } from './schema.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/** The handle inside `db.transaction(async (tx) => …)`. */
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** Either the pool or an open transaction — repository functions that may run inside one take this. */
+export type DbExecutor = Db | Tx;
+
 export interface DbHandle {
   db: Db;
   sql: postgres.Sql;

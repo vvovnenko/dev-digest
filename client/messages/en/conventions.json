@@ -4,23 +4,54 @@
     "crumbConventions": "Conventions",
     "headingPrefix": "Conventions in ",
     "repoFallback": "repo",
-    "subtitle": "Scan the cloned repo to surface house-rules — each backed by evidence you can turn into a Skill.",
-    "scanning": "Scanning…",
+    "subtitle": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}",
     "rescan": "Re-scan",
-    "runExtraction": "Run extraction",
-    "extractionFailed": "Extraction failed",
+    "scanning": "Scanning…",
     "loadError": "Could not load conventions.",
     "empty": {
-      "title": "No conventions extracted yet",
-      "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
-      "cta": "Run extraction"
+      "title": "No conventions yet",
+      "body": "Scan the repo to surface its house rules — naming, error handling, structure — each backed by a file:line you can check.",
+      "cta": "Run scan"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "noCandidates": "No convention from the last scan passed the evidence check. Re-scan to try again.",
+    "deselectAll": "Deselect all",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "createSkill": "Create skill"
+  },
+  "status": {
+    "queued": "Scan queued…",
+    "running": "Scanning… started {when}",
+    "failed": "Last scan failed: {error}",
+    "failedFallback": "Last scan failed for an unknown reason."
   },
   "card": {
     "confidence": "Confidence",
+    "accept": "Accept",
     "accepted": "Accepted",
-    "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "reject": "Reject",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "ruleLabel": "Rule",
+    "copySnippet": "Copy snippet",
+    "copied": "Copied"
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "banner": "Merged from <strong>{count, plural, one {# accepted convention} other {# accepted conventions}}</strong> in <code>{repo}</code>. Everything below is editable before you save.",
+    "name": "Name",
+    "nameInvalid": "Use lowercase letters, digits and single hyphens (at most 64 characters).",
+    "nameTaken": "A skill with this name already exists.",
+    "description": "Description",
+    "type": "Type",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "body": "Skill body",
+    "bodyLabel": "Skill body, Markdown",
+    "loadError": "Could not merge the accepted conventions.",
+    "savedAs": "Saved as <strong>v1</strong> · added to Skills Lab",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…"
   }
 }

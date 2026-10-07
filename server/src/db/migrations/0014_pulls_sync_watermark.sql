@@ -1,0 +1,1 @@
+ALTER TABLE "repos" ADD COLUMN "pulls_synced_through" timestamp with time zone;

@@ -115,8 +115,24 @@ export type MemoryItem = z.infer<typeof MemoryItem>;
 export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
 
-export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
+// 'imported' = a .md / .zip uploaded through `POST /skills/import/preview` and then
+// confirmed with `POST /skills`; 'imported_url' = fetched and saved by `POST /skills/import/url`.
+export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community', 'imported']);
 export type SkillSource = z.infer<typeof SkillSource>;
+
+/** A skill's name: a kebab-case slug, unique per workspace (409 on a duplicate). */
+export const SkillName = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, digits and single hyphens');
+export type SkillName = z.infer<typeof SkillName>;
+
+/** A skill body: markdown, not blank, at most 40,000 characters. */
+const SkillBody = z
+  .string()
+  .max(40_000)
+  .refine((s) => s.trim().length > 0, { message: 'The skill body is empty' });
 
 export const Skill = z.object({
   id: z.string(),
@@ -128,8 +144,138 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  /** Agents that have this skill linked AND enabled (list/detail responses). */
+  agent_count: z.number().int().nullish(),
+  /**
+   * The description or body matches prompt-injection patterns (computed on read). Such a
+   * skill is blocked: `PUT {enabled: true}` is a 422 and review runs leave it out, so its
+   * effective state is `enabled && !injection_detected`. A clean save unblocks it.
+   */
+  injection_detected: z.boolean(),
 });
 export type Skill = z.infer<typeof Skill>;
+
+/** Body of `POST /skills`. */
+export const SkillCreate = z.object({
+  name: SkillName,
+  description: z.string().max(1024).optional(),
+  type: SkillType.optional(),
+  body: SkillBody,
+  enabled: z.boolean().optional(),
+  source: z.enum(['manual', 'imported']).optional(),
+  /** File the body was imported from; only feeds the v1 note "Imported from <file>". */
+  imported_from: z.string().min(1).max(255).optional(),
+});
+export type SkillCreate = z.infer<typeof SkillCreate>;
+
+/**
+ * Body of `PUT /skills/:id`: any subset. Changing name / description / type / body
+ * bumps `version` and snapshots it into `skill_versions`; toggling `enabled` doesn't.
+ */
+export const SkillUpdate = z.object({
+  name: SkillName.optional(),
+  description: z.string().max(1024).optional(),
+  type: SkillType.optional(),
+  body: SkillBody.optional(),
+  enabled: z.boolean().optional(),
+});
+export type SkillUpdate = z.infer<typeof SkillUpdate>;
+
+/** One immutable snapshot in `skill_versions` (`GET /skills/:id/versions`, newest first). */
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  /** What changed, e.g. "Created", "Edited body, description", "Restored v3". */
+  note: z.string(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/** An agent that has the skill linked and enabled (`GET /skills/:id/agents`). */
+export const SkillAgentUse = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  agent_enabled: z.boolean(),
+  order: z.number().int(),
+});
+export type SkillAgentUse = z.infer<typeof SkillAgentUse>;
+
+/**
+ * Body of `POST /skills/import/preview`: one `.md` or `.zip` file, base64-encoded
+ * (≤ 512 KiB raw ⇒ ≤ 699,052 base64 chars, inside the API's 1 MiB body limit).
+ */
+export const SkillImportRequest = z.object({
+  filename: z.string().min(1).max(255),
+  content_base64: z
+    .string()
+    .min(1)
+    .max(699_052)
+    .regex(/^[A-Za-z0-9+/]*={0,2}$/, 'Not base64'),
+});
+export type SkillImportRequest = z.infer<typeof SkillImportRequest>;
+
+/** Why an archive entry was not used. Nothing in an archive is ever written or executed. */
+export const SkillImportSkipReason = z.enum([
+  'script',
+  'not_markdown',
+  'extra_markdown',
+  'unsafe_path',
+  'os_metadata',
+  'too_large',
+]);
+export type SkillImportSkipReason = z.infer<typeof SkillImportSkipReason>;
+
+export const SkillImportWarningCode = z.enum([
+  'unknown_frontmatter_key',
+  'invalid_frontmatter',
+  'invalid_type',
+  'missing_description',
+  'name_derived',
+  'hidden_characters',
+  'large_body',
+  'skipped_file_referenced',
+]);
+export type SkillImportWarningCode = z.infer<typeof SkillImportWarningCode>;
+
+/** Reply of `POST /skills/import/preview` — a draft to confirm; nothing is saved yet. */
+export const SkillImportPreview = z.object({
+  draft: z.object({
+    name: z.string(),
+    description: z.string(),
+    type: SkillType,
+    body: z.string(),
+  }),
+  /** The file (or archive entry) the draft's body came from. */
+  source_file: z.string(),
+  skipped: z.array(z.object({ path: z.string(), reason: SkillImportSkipReason })),
+  warnings: z.array(
+    z.object({ code: SkillImportWarningCode, detail: z.string().nullish() }),
+  ),
+  /** A skill with `draft.name` already exists in this workspace. */
+  name_taken: z.boolean(),
+});
+export type SkillImportPreview = z.infer<typeof SkillImportPreview>;
+
+/**
+ * Body of `POST /skills/import/url` → 201 `Skill`. The server fetches the file (https only,
+ * public addresses, ≤ 512 KiB), parses it like an upload, checks it and saves it at once —
+ * there is no preview step. A flagged skill is saved too, with `injection_detected: true`.
+ */
+export const SkillImportUrlRequest = z.object({
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .url()
+    .refine((u) => /^https:\/\//i.test(u), { message: 'Only https:// URLs can be imported' }),
+  /** Overrides the derived name (frontmatter `name`, else the first heading, else the file name). */
+  name: SkillName.optional(),
+});
+export type SkillImportUrlRequest = z.infer<typeof SkillImportUrlRequest>;
 
 export const CommunitySkill = z.object({
   name: z.string(),
@@ -141,17 +287,124 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+/** What a convention is about; the model picks one per candidate (`other` when none fits). */
+export const ConventionCategory = z.enum([
+  'naming',
+  'structure',
+  'error_handling',
+  'async',
+  'typing',
+  'imports',
+  'testing',
+  'formatting',
+  'other',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/** A candidate's review state; `rejected` ones are never listed and never reach a skill. */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+/**
+ * A convention the model proposed and code grounded: `evidence_snippet` is the real
+ * text of `evidence_path` lines `evidence_start_line`..`evidence_end_line`, never the
+ * model's quote. `accepted` mirrors `status === 'accepted'`.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  category: ConventionCategory,
   rule: z.string(),
   evidence_path: z.string(),
+  evidence_start_line: z.number().int(),
+  evidence_end_line: z.number().int(),
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
+  status: ConventionStatus,
   accepted: z.boolean(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
 
+/**
+ * A scan's lifecycle: `POST .../extract` creates it `queued`, a background job
+ * moves it to `running`, then `done` (results stored) or `failed` (`error`).
+ * At most one `queued`/`running` scan per repo.
+ */
+export const ConventionScanStatus = z.enum(['queued', 'running', 'done', 'failed']);
+export type ConventionScanStatus = z.infer<typeof ConventionScanStatus>;
+
+/** One run of `POST /repos/:id/conventions/extract`; the result fields are filled when it is `done`. */
+export const ConventionScan = z.object({
+  id: z.string(),
+  status: ConventionScanStatus,
+  /** Why a `failed` scan failed (model error, restart, …). */
+  error: z.string().nullish(),
+  /** Files the model saw: configs + the top-ranked source files. */
+  sample_files: z.array(z.string()),
+  provider: z.string(),
+  model: z.string(),
+  /** Candidates the model returned / that passed the evidence check and were stored. */
+  candidates_found: z.number().int(),
+  candidates_kept: z.number().int(),
+  cost_usd: z.number().nullish(),
+  created_at: z.string(),
+  started_at: z.string().nullish(),
+  finished_at: z.string().nullish(),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+/**
+ * `GET /repos/:id/conventions` and the 202 reply of `.../extract`. `scan` is the
+ * latest `done` scan (what the candidates came from); `latest_scan` is the newest
+ * scan of any status — `queued`/`running` while one is in flight (poll until it
+ * isn't), `failed` when the last attempt failed. Candidates: every non-rejected one.
+ */
+export const ConventionsState = z.object({
+  scan: ConventionScan.nullable(),
+  latest_scan: ConventionScan.nullable(),
+  candidates: z.array(ConventionCandidate),
+});
+export type ConventionsState = z.infer<typeof ConventionsState>;
+
+/** Body of `PUT /conventions/:id`: accept / reject / back to pending, or an inline edit of the rule. */
+export const ConventionUpdate = z
+  .object({
+    status: ConventionStatus.optional(),
+    rule: z
+      .string()
+      .max(500)
+      .refine((s) => s.trim().length > 0, { message: 'The rule is empty' })
+      .optional(),
+  })
+  .refine((u) => u.status !== undefined || u.rule !== undefined, {
+    message: 'Nothing to update',
+  });
+export type ConventionUpdate = z.infer<typeof ConventionUpdate>;
+
+/** `GET /repos/:id/conventions/skill-draft`: the accepted candidates merged into one editable skill. */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  accepted_count: z.number().int(),
+  /** A skill with `name` already exists in this workspace. */
+  name_taken: z.boolean(),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
+
+/** Body of `POST /repos/:id/conventions/skill`: the draft as the user edited it (source is `extracted`). */
+export const ConventionSkillCreate = SkillCreate.pick({
+  name: true,
+  description: true,
+  type: true,
+  body: true,
+  enabled: true,
+});
+export type ConventionSkillCreate = z.infer<typeof ConventionSkillCreate>;
+
 // ---- Agents ----
+// 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
+// custom baseURL) — used by the CI runner for cheap models (DeepSeek/GLM/MiniMax).
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
 export type Provider = z.infer<typeof Provider>;
 
@@ -162,8 +415,12 @@ export type Provider = z.infer<typeof Provider>;
 export const ReviewStrategy = z.enum(['single-pass', 'map-reduce', 'auto']);
 export type ReviewStrategy = z.infer<typeof ReviewStrategy>;
 
-// CI gate policy — when a CI review should BLOCK (REQUEST_CHANGES + fail the
-// check) vs just comment. Deterministic from severities; acted on ONLY in CI.
+// CI gate policy — when a review should BLOCK (REQUEST_CHANGES + fail the check)
+// vs just comment. Deterministic from finding severities, NOT the model's verdict:
+//  - never:    never block, always comment (advisory only)
+//  - critical: block iff >=1 CRITICAL finding (default)
+//  - warning:  block iff >=1 WARNING or CRITICAL finding
+//  - any:      block iff >=1 finding of any severity
 export const CiFailOn = z.enum(['never', 'critical', 'warning', 'any']);
 export type CiFailOn = z.infer<typeof CiFailOn>;
 
@@ -182,12 +439,91 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  /** Linked skills that are enabled for this agent (list/detail responses). */
+  skill_count: z.number().int().nullish(),
 });
 export type Agent = z.infer<typeof Agent>;
+
+/** Body of `POST /agents`. */
+export const AgentCreate = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  provider: Provider,
+  model: z.string().min(1),
+  system_prompt: z.string().min(1),
+  output_schema: z.unknown().optional(),
+  strategy: ReviewStrategy.optional(),
+  ci_fail_on: CiFailOn.optional(),
+  repo_intel: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+export type AgentCreate = z.infer<typeof AgentCreate>;
+
+/** Body of `PUT /agents/:id`: any subset of the editable fields (toggling `enabled` included). */
+export const AgentUpdate = AgentCreate.partial();
+export type AgentUpdate = z.infer<typeof AgentUpdate>;
 
 export const AgentSkillLink = z.object({
   agent_id: z.string(),
   skill_id: z.string(),
   order: z.number().int(),
+  /** Off = kept in the agent's list (and its position) but left out of the prompt. */
+  enabled: z.boolean(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+/** One entry of an agent's ordered skill list; array order = prompt order. */
+export const AgentSkillLinkInput = z.object({
+  skill_id: z.string().uuid(),
+  enabled: z.boolean(),
+});
+export type AgentSkillLinkInput = z.infer<typeof AgentSkillLinkInput>;
+
+/**
+ * Body of `POST /agents/:id/skills`. `links` replaces the agent's whole ordered list
+ * (with per-agent enabled flags); `skill_ids` sets it with every link enabled;
+ * `skill_id` (+ optional `order`) links one skill.
+ */
+export const AgentSkillsUpdate = z
+  .object({
+    links: z.array(AgentSkillLinkInput).max(500).optional(),
+    skill_ids: z.array(z.string().uuid()).max(500).optional(),
+    skill_id: z.string().uuid().optional(),
+    order: z.number().int().min(0).optional(),
+  })
+  .refine((b) => b.links !== undefined || b.skill_ids !== undefined || b.skill_id !== undefined, {
+    message: 'Provide links, skill_ids (set/reorder) or skill_id (link one)',
+  })
+  .refine((b) => !b.links || new Set(b.links.map((l) => l.skill_id)).size === b.links.length, {
+    message: 'A skill appears twice in links',
+    path: ['links'],
+  });
+export type AgentSkillsUpdate = z.infer<typeof AgentSkillsUpdate>;
+
+// The immutable config snapshot captured in `agent_versions` whenever an agent's
+// config changes (everything but `enabled`). Mirrors the shape written by the
+// agents repository — provider/model/prompt/output_schema/strategy/gate/repo_intel
+// plus the ordered skill ids linked at snapshot time. Used for reproducibility
+// (eval replays a past version) and for surfacing an agent's edit history.
+// `skills` = ids of the ENABLED links, in prompt order; `skill_links` (absent in
+// snapshots written before L02) = every link with its per-agent flag.
+export const AgentVersionConfig = z.object({
+  provider: Provider,
+  model: z.string(),
+  system_prompt: z.string(),
+  output_schema: z.unknown().nullish(),
+  strategy: ReviewStrategy,
+  ci_fail_on: CiFailOn,
+  repo_intel: z.boolean(),
+  skills: z.array(z.string()),
+  skill_links: z.array(z.object({ skill_id: z.string(), enabled: z.boolean() })).optional(),
+});
+export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
+
+export const AgentVersion = z.object({
+  agent_id: z.string(),
+  version: z.number().int(),
+  config: AgentVersionConfig,
+  created_at: z.string(),
+});
+export type AgentVersion = z.infer<typeof AgentVersion>;

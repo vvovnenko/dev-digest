@@ -1,4 +1,4 @@
-import type { CiFailOn, Finding, GitHubReviewPayload, Review, UnifiedDiff } from '@devdigest/shared';
+import type { CiFailOn, Finding, GitHubReviewPayload, Review, UnifiedDiff, Verdict } from '@devdigest/shared';
 import { buildLineIndex } from '../grounding.js';
 
 /**
@@ -38,6 +38,23 @@ export function gateTriggered(findings: Finding[], failOn: CiFailOn): boolean {
   const min = FAIL_ON_MIN_RANK[failOn];
   return findings.some((f) => (SEV_RANK[f.severity] ?? 0) >= min);
 }
+
+/**
+ * The review verdict, derived from the grounded findings and the agent's gate —
+ * never the model's own verdict, which can contradict its findings (e.g.
+ * `request_changes` with zero findings). No findings → approve; the gate trips →
+ * request_changes; otherwise → comment. The GitHub review event maps from it.
+ */
+export function verdictFromFindings(findings: Finding[], failOn: CiFailOn): Verdict {
+  if (findings.length === 0) return 'approve';
+  return gateTriggered(findings, failOn) ? 'request_changes' : 'comment';
+}
+
+const EVENT_BY_VERDICT: Record<Verdict, GitHubReviewPayload['event']> = {
+  approve: 'APPROVE',
+  request_changes: 'REQUEST_CHANGES',
+  comment: 'COMMENT',
+};
 
 /**
  * How many findings trip the gate under `failOn` (severity rank ≥ the gate
@@ -153,12 +170,7 @@ export function toReviewPayload(review: Review, opts: ToReviewOptions = {}): Git
   const comments = inline ? inlineComments(review.findings, lineIndex) : [];
   // Deterministic event from severities + gate policy (ignores model verdict):
   // no findings → APPROVE; gate tripped → REQUEST_CHANGES; otherwise → COMMENT.
-  const event: GitHubReviewPayload['event'] =
-    review.findings.length === 0
-      ? 'APPROVE'
-      : gateTriggered(review.findings, failOn)
-        ? 'REQUEST_CHANGES'
-        : 'COMMENT';
+  const event = EVENT_BY_VERDICT[verdictFromFindings(review.findings, failOn)];
   return {
     body: composeBody(review.findings, event, title),
     event,

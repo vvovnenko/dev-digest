@@ -1,21 +1,24 @@
-import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import type { LLMUsage, PromptSkillBlock, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import { reviewPullRequest, countBlockers, skillBlocks, usageOf } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
-import * as schema from '../../db/schema.js';
-import type { AgentRow } from '../../db/rows.js';
-import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
+import type { FindingRecord, ReviewAgent, ReviewPull, ReviewRecord, ReviewRepoRef } from './domain.js';
+import type { ReviewDeps } from './ports.js';
 import { REVIEW_STRATEGY } from './constants.js';
-import { taskLine } from './helpers.js';
-import { loadDiff } from './diff-loader.js';
+import { splitInjectedSkills, taskLine } from './helpers.js';
 
-/** Thrown by a run when the user cancels it mid-flight (between map files). */
+/** Thrown by a run told to stop mid-flight: a user's cancel or an API shutdown. */
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
     this.name = 'RunCancelledError';
   }
 }
+
+/** What a run stopped by an API shutdown records as its error. */
+export const RUN_SHUTDOWN_ERROR = 'The API shut down while this run was in progress';
+
+/** The skills block a run's prompt carried, kept for its trace (a failed run's too). */
+type SkillTrace = { text: string; blocks: PromptSkillBlock[] };
 
 /** Minimal structured logger (pino-compatible: (obj, msg)) for runtime logs. */
 export type Logger = {
@@ -28,8 +31,8 @@ export type Logger = {
 // A reduced "Review per file" — same schema as Review (the model returns a small
 // Review per file; we merge findings + take the worst verdict / mean score).
 export type RunOutcome = {
-  review: ReviewRow;
-  findings: FindingRow[];
+  review: ReviewRecord;
+  findings: FindingRecord[];
   grounding: string;
   raw: Review;
 };
@@ -41,11 +44,7 @@ export type RunOutcome = {
  * review. Per-agent failures are isolated.
  */
 export class ReviewRunExecutor {
-  constructor(
-    private container: Container,
-    private repo: ReviewRepository,
-    private agents: Container['agentsRepo'],
-  ) {}
+  constructor(private deps: ReviewDeps) {}
 
   /**
    * Background execution of the queued agent runs (NOT awaited by the route).
@@ -54,16 +53,20 @@ export class ReviewRunExecutor {
    */
   async executeRuns(
     workspaceId: string,
-    pull: PullRow,
-    repo: typeof schema.repos.$inferSelect,
-    jobs: { agent: AgentRow; runId: string }[],
+    pull: ReviewPull,
+    repo: ReviewRepoRef,
+    jobs: { agent: ReviewAgent; runId: string }[],
     logger?: Logger,
   ): Promise<void> {
+    // Claim every queued run now, before the first await, so a shutdown waits
+    // for the agents still waiting their turn too.
+    this.deps.runs.claim(jobs.map((j) => j.runId));
+
     // ONE logger fanned out over every queued run: shared pre-work (diff +
     // intent) is streamed into each target agent's Live Log and persisted into
     // each run's trace. Per-agent work below narrows it to a single run.
     const runLog = new RunLogger(
-      this.container.runBus,
+      this.deps.runs,
       jobs.map((j) => j.runId),
       logger,
       { prId: pull.id },
@@ -74,27 +77,20 @@ export class ReviewRunExecutor {
     // mark the rows failed and persist the buffered log so it survives a reload.
     const failAll = async (msg: string) => {
       for (const { runId, agent } of jobs) {
-        await this.repo
-          .completeAgentRun(runId, {
-            status: 'failed',
-            durationMs: 0,
-            tokensIn: 0,
-            tokensOut: 0,
-            findingsCount: 0,
-            grounding: '0/0 passed',
-            error: msg,
-          })
-          .catch(() => undefined);
-        await this.repo
-          .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed'))
-          .catch(() => undefined);
-        this.container.runBus.complete(runId);
+        await this.deps.store
+          .finishRunUnsuccessfully(
+            runId,
+            { status: 'failed', error: msg, durationMs: 0, tokensIn: 0, tokensOut: 0, costUsd: null },
+            this.traceFromBuffer(runId, pull, agent, '0/0 passed'),
+          )
+          .catch((err) => logger?.error({ runId, err: (err as Error).message }, 'review: could not record the failed run'));
+        this.deps.runs.complete(runId);
       }
     };
 
     let diff: UnifiedDiff;
     try {
-      diff = await runLog.step('Loading PR diff', () => loadDiff(this.container, this.repo, workspaceId, pull, repo), {
+      diff = await runLog.step('Loading PR diff', () => this.deps.diffs.forPull(pull, repo), {
         kind: 'tool',
       });
     } catch (err) {
@@ -137,10 +133,10 @@ export class ReviewRunExecutor {
   /** Execute a single agent's review against a PR, streaming progress. */
   private async runOneAgent(
     workspaceId: string,
-    pull: PullRow,
-    repo: typeof schema.repos.$inferSelect,
+    pull: ReviewPull,
+    repo: ReviewRepoRef,
     diff: UnifiedDiff,
-    agent: AgentRow,
+    agent: ReviewAgent,
     runId: string,
     parentLog: RunLogger,
   ): Promise<RunOutcome> {
@@ -149,17 +145,35 @@ export class ReviewRunExecutor {
     // events are already in this run's buffer, so the persisted trace below
     // (built from the buffer) includes them too.
     const runLog = parentLog.forRun(runId, { agent: agent.name });
+    // Start the run in this process: cancel() aborts the in-flight LLM call via this signal.
+    const signal = this.deps.runs.track(runId);
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
+    // Set once the skills are loaded, so a run that fails later still traces them.
+    let skillTrace: SkillTrace | undefined;
 
     try {
-      // Resolve the agent's LLM provider. (container.llm throws if the provider
+      // Cancelled while waiting its turn, or the API is shutting down.
+      if (this.deps.runs.stopReason(runId)) throw new RunCancelledError();
+      // Resolve the agent's LLM provider. (deps.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
       const llm = await runLog.step(
         `Resolving ${agent.provider} provider`,
-        () => this.container.llm(agent.provider as Provider),
+        () => this.deps.llm(agent.provider as Provider),
         { kind: 'tool' },
       );
+
+      // L02 — the agent's enabled skills, in its order. A DB failure here fails
+      // the run: reviewing without the agent's rules would look like a pass.
+      const loaded = await runLog.step('Loading skills', () => this.deps.agents.enabledSkills(workspaceId, agent.id));
+      const { kept: skills, blocked } = splitInjectedSkills(loaded); // a flagged skill never reaches the prompt
+      if (blocked.length > 0) runLog.info(`skills: ${blocked.length} blocked (prompt injection detected)`, { skills: blocked.map((b) => b.name) });
+      const blocks = skillBlocks(skills);
+      const skillTokens = blocks.reduce((sum, b) => sum + b.tokens, 0);
+      runLog.info(`skills: ${blocks.length} attached (+${skillTokens} tokens)`, {
+        skills: blocks.map((b) => ({ name: b.name, version: b.version, tokens: b.tokens })),
+      });
+      if (blocks.length > 0) skillTrace = { text: blocks.map((b) => b.text).join('\n\n'), blocks };
 
       // Per-agent repo-intel toggle (Agent editor). When an agent opts out we
       // skip all enrichment entirely so its prompt is identical to the
@@ -195,64 +209,40 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // The verdict is derived from the grounded findings under this agent's gate.
+        failOn: agent.ciFailOn,
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // L02 — the agent's skills (trusted instructions); omitted when none is enabled.
+        ...(skills.length > 0 ? { skills } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Title/author are author-controlled too: wrapped, never in `task`.
+        pr: { title: pull.title, author: pull.author },
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
         checkCancelled: () => {
-          if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
+          if (this.deps.runs.stopReason(runId)) throw new RunCancelledError();
         },
+        signal,
       });
+      // A cancel that arrived after the last LLM call still wins: don't save the review.
+      if (this.deps.runs.stopReason(runId)) throw new RunCancelledError();
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
-
-      // ---- Persist review + findings ----------------------------------------
-      const review = await this.repo.insertReview({
-        workspaceId,
-        prId: pull.id,
-        agentId: agent.id,
-        runId,
-        kind: 'review',
-        verdict: outcome.review.verdict,
-        summary: outcome.review.summary,
-        score: outcome.review.score,
-        model: agent.model,
-      });
-      const findingRows = await this.repo.insertFindings(review.id, keptFindings);
-      runLog.result(`Persisted review ${review.id} with ${findingRows.length} finding(s)`);
-
-      // Mark the commit this review ran against so the PR list can tell
-      // reviewed / needs-review (head moved) / stale apart.
-      await this.repo.markReviewed(pull.id, pull.headSha);
-
       const durationMs = Date.now() - start;
 
       // Deterministic blocker count (severity ≥ the agent's gate) — the signal
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
-      // ---- Observability: agent_runs + ONE run_traces document --------------
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        costUsd,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-      });
-
+      runLog.info('Review ready; saving it with the run and its trace');
       const trace: RunTrace = {
         config: {
           agent: agent.name,
@@ -267,7 +257,7 @@ export class ReviewRunExecutor {
           tokens_in: tokensIn,
           tokens_out: tokensOut,
           cost_usd: costUsd,
-          findings: findingRows.length,
+          findings: keptFindings.length,
           grounding,
         },
         prompt_assembly: outcome.assembly,
@@ -284,33 +274,68 @@ export class ReviewRunExecutor {
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
       };
-      runLog.info('Run complete; trace persisted');
-      await this.repo.saveRunTrace(runId, trace);
-      this.container.runBus.complete(runId);
+      // ---- Persist: run row + review + findings + reviewed sha + trace, in ONE
+      // transaction that only commits while the run is still `running`.
+      const saved = await this.deps.store.completeRunWithReview(runId, {
+        run: {
+          durationMs,
+          tokensIn,
+          tokensOut,
+          costUsd,
+          findingsCount: keptFindings.length,
+          grounding,
+          score: outcome.review.score,
+          blockers,
+        },
+        review: {
+          workspaceId,
+          prId: pull.id,
+          agentId: agent.id,
+          kind: 'review',
+          verdict: outcome.review.verdict,
+          summary: outcome.review.summary,
+          score: outcome.review.score,
+          model: agent.model,
+        },
+        findings: keptFindings,
+        // The commit this review ran against, so the PR list can tell reviewed /
+        // needs-review (head moved) / stale apart.
+        reviewedSha: pull.headSha,
+        trace,
+      });
+      // Cancelled (or deleted) while we were saving: nothing was written.
+      if (!saved) throw new RunCancelledError();
+      runLog.result(`Persisted review ${saved.review.id} with ${saved.findings.length} finding(s)`);
+      this.deps.runs.complete(runId);
 
-      return { review, findings: findingRows, grounding, raw: outcome.review };
+      return { review: saved.review, findings: saved.findings, grounding, raw: outcome.review };
     } catch (err) {
-      // Failure/cancel: persist status + the error text + the log-so-far so the
-      // run (and WHY it failed) is visible on the UI after a reload.
-      const cancelled = err instanceof RunCancelledError;
-      const status = cancelled ? 'cancelled' : 'failed';
-      const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
-      runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
-      await this.repo
-        .completeAgentRun(runId, {
-          status,
-          durationMs: Date.now() - start,
-          tokensIn: 0,
-          tokensOut: 0,
-          findingsCount: 0,
-          grounding: '0/0 passed',
-          error: msg,
-        })
-        .catch(() => undefined);
-      await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
-        .catch(() => undefined);
-      this.container.runBus.complete(runId);
+      // Failure/cancel: persist status + the error text + what the calls cost +
+      // the log-so-far, so the run (and WHY it failed) is visible after a reload.
+      // An aborted LLM call surfaces as a provider error — the stop reason says
+      // why it was aborted. A shutdown is a failure the user didn't ask for.
+      const reason =
+        this.deps.runs.stopReason(runId) ?? (err instanceof RunCancelledError ? 'cancelled' : undefined);
+      const status = reason === 'cancelled' ? 'cancelled' : 'failed';
+      const msg =
+        reason === 'cancelled' ? 'Cancelled by user' : reason === 'shutdown' ? RUN_SHUTDOWN_ERROR : (err as Error).message;
+      const spent = usageOf(err);
+      runLog.error(reason === 'cancelled' ? 'Run cancelled by user' : `Run failed: ${msg}`);
+      await this.deps.store
+        .finishRunUnsuccessfully(
+          runId,
+          {
+            status,
+            error: msg,
+            durationMs: Date.now() - start,
+            tokensIn: spent?.tokensIn ?? 0,
+            tokensOut: spent?.tokensOut ?? 0,
+            costUsd: spent?.costUsd ?? null,
+          },
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, spent, skillTrace),
+        )
+        .catch((writeErr) => runLog.error(`Could not record the ${status} run: ${(writeErr as Error).message}`));
+      this.deps.runs.complete(runId);
       throw err;
     }
   }
@@ -335,7 +360,7 @@ export class ReviewRunExecutor {
     if (changedFiles.length === 0) return undefined;
     let rows;
     try {
-      rows = await this.container.repoIntel.getCallerSignatures(repoId, changedFiles, 10);
+      rows = await this.deps.repoContext.getCallerSignatures(repoId, changedFiles, 10);
     } catch (err) {
       // Never let an enrichment break the run — surface only as a Live Log info.
       runLog.info(`callers digest: repoIntel failed — ${(err as Error).message}`);
@@ -368,7 +393,7 @@ export class ReviewRunExecutor {
     runLog: RunLogger,
   ): Promise<string | undefined> {
     try {
-      const map = await this.container.repoIntel.getRepoMap(repoId);
+      const map = await this.deps.repoContext.getRepoMap(repoId);
       if (map.degraded || map.text.trim().length === 0) return undefined;
       runLog.info(`repo map: ${map.tokens} token(s) attached (cached=${map.cached})`);
       return map.text;
@@ -391,13 +416,14 @@ export class ReviewRunExecutor {
     const changedFiles = diff.files.map((f) => f.path);
     if (changedFiles.length === 0) return '';
     try {
-      const ranks = await this.container.repoIntel.getFileRank(repoId, changedFiles);
+      const ranks = await this.deps.repoContext.getFileRank(repoId, changedFiles);
       if (ranks.length === 0) return '';
       const hot = ranks.filter((r) => r.percentile >= 95);
       if (hot.length === 0) return '';
       runLog.info(`file rank: ${hot.length}/${changedFiles.length} changed file(s) in top 5%`);
       return `\n\n${hot.length} of ${changedFiles.length} changed file(s) are in the top 5% most-depended-on (high blast risk) — prioritise their correctness.`;
-    } catch {
+    } catch (err) {
+      runLog.info(`file rank: repoIntel failed — ${(err as Error).message}`);
       return '';
     }
   }
@@ -409,10 +435,12 @@ export class ReviewRunExecutor {
    */
   private traceFromBuffer(
     runId: string,
-    pull: PullRow,
-    agent: AgentRow,
+    pull: ReviewPull,
+    agent: ReviewAgent,
     grounding: string,
     durationMs = 0,
+    spent?: LLMUsage | null,
+    skills?: SkillTrace,
   ): RunTrace {
     return {
       config: {
@@ -423,13 +451,27 @@ export class ReviewRunExecutor {
         pr: pull.number,
         source: 'local',
       },
-      stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, findings: 0, grounding },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      stats: {
+        duration_ms: durationMs,
+        tokens_in: spent?.tokensIn ?? 0,
+        tokens_out: spent?.tokensOut ?? 0,
+        cost_usd: spent?.costUsd ?? null,
+        findings: 0,
+        grounding,
+      },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: skills?.text ?? null,
+        skill_blocks: skills?.blocks ?? null,
+        memory: null,
+        specs: null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
       specs_read: [],
-      log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
+      log: this.deps.runs.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
     };
   }
 }

@@ -6,7 +6,8 @@ import { zodResponseFormat } from 'openai/helpers/zod';
  *
  * - `toJsonSchema` converts a Zod schema to a JSON Schema (draft-07, strict
  *   object) by reusing OpenAI's bundled converter — used for OpenAI's
- *   `response_format: json_schema` AND Anthropic forced tool-use `input_schema`.
+ *   `response_format: json_schema` AND the Anthropic adapter's tool `input_schema`
+ *   (forced where the model allows it, `tool_choice: auto` otherwise).
  * - `parseWithRepair` validates raw model text against the Zod schema and, on
  *   failure, returns a reprompt instruction so the caller can retry-on-error.
  */

@@ -30,13 +30,14 @@ jobs:
   test:
     name: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: reviewer-core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -45,5 +46,8 @@ jobs:
       - run: npm ci
 
       - run: npm run typecheck
+
+      # Type-aware lint (typescript-eslint, eslint.config.mjs). Warn-only for now.
+      - run: npm run lint
 
       - run: npm test

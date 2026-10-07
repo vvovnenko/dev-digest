@@ -27,4 +27,7 @@ export function loadMessages(locale: string): AbstractIntlMessages {
 export default getRequestConfig(async () => ({
   locale: LOCALE,
   messages: loadMessages(LOCALE),
+  // Local-first: the API, the web server and the browser share one machine, so
+  // its zone is the user's. Fixed here so server and client format dates alike.
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 }));

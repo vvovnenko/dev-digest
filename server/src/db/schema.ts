@@ -2,8 +2,9 @@
  * Canonical Drizzle schema — EVERY table in the schema.
  *
  * Tenancy rule: every domain table carries `workspace_id` (FK→workspaces)
- * and, where relevant, `created_by` (FK→users). All queries scope by
- * workspace_id via the base-repository guard.
+ * and, where relevant, `created_by` (FK→users). There is no base-repository
+ * guard: each repository method scopes its own query by workspace_id, or takes
+ * an id it got from one that did.
  *
  * This is the COMPLETE schema. Feature agents A1–A6 do NOT run parallel
  * migrations against these tables — they only extend with their own new
@@ -32,7 +33,7 @@ import { pullRequests, prFiles, prCommits } from './schema/pulls';
 import { reviews, findings, prIntent, prBrief } from './schema/reviews';
 import { skills, skillVersions } from './schema/skills';
 import { agents, agentVersions, agentSkills } from './schema/agents';
-import { memory, conventions } from './schema/knowledge';
+import { memory, conventions, conventionScans } from './schema/knowledge';
 import { codeChunks, symbols, references, onboarding } from './schema/context';
 import { evalCases, evalRuns, conformanceChecks, composedReviews } from './schema/eval';
 import { ciInstallations, ciRuns } from './schema/ci';
@@ -66,6 +67,7 @@ export const schema = {
   agentVersions,
   agentSkills,
   conventions,
+  conventionScans,
   memory,
   codeChunks,
   symbols,

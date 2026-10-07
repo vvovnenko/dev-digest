@@ -11,10 +11,35 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  ListPullsOptions,
+  PrDiffStats,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 
+/**
+ * For calls that create something (a review, a comment, a PR, a commit): a
+ * timeout or 5xx may still have succeeded on GitHub, and a retry would post it
+ * twice. Reads keep retrying.
+ */
+const NO_RETRY = { retries: 0 };
+
 const TIMEOUT = 30_000;
+
+/** GitHub's largest page for list endpoints. */
+const PULLS_PER_PAGE = 100;
+/** PRs per GraphQL diff-stats query (one aliased `pullRequest` field each). */
+const STATS_PER_QUERY = 100;
+/** Without GraphQL: at most this many PRs by REST per call, this many at a time. */
+const REST_STATS_LIMIT = 30;
+const REST_STATS_CONCURRENCY = 5;
+
+type StatsNode = { number: number; additions: number; deletions: number; changedFiles: number } | null;
+
+/** Structural: Fastify's `app.log` satisfies it. */
+export interface AdapterLog {
+  warn(obj: unknown, msg?: string): void;
+}
+type StatsData = { repository: Record<string, StatsNode> | null };
 
 function mapStatus(state: string, merged: boolean | undefined): PrStatus {
   if (merged) return 'merged';
@@ -28,43 +53,129 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
  */
 export class OctokitGitHubClient implements GitHubClient {
   private octokit: Octokit;
+  private log: AdapterLog | undefined;
 
-  constructor(token: string) {
-    this.octokit = new Octokit({ auth: token });
+  /** `octokit` is for tests; `log` reports a degraded path (GraphQL refused → REST). */
+  constructor(token: string, opts: { octokit?: Octokit | undefined; log?: AdapterLog | undefined } = {}) {
+    this.octokit = opts.octokit ?? new Octokit({ auth: token });
+    this.log = opts.log;
   }
 
-  async listPullRequests(repo: RepoRef): Promise<PrMeta[]> {
-    return withRetry(() =>
+  async listPullRequests(repo: RepoRef, opts: ListPullsOptions = {}): Promise<PrMeta[]> {
+    // Every state, most recently updated first, page by page. An update only moves
+    // a PR to the top, so pages read later can repeat a row (deduped below) but
+    // never skip one. With `updatedSince` we stop after the page that reaches it.
+    // Each page retries and times out on its own, so a large repo is not squeezed
+    // into one 30 s budget.
+    const since = opts.updatedSince ? Date.parse(opts.updatedSince) : null;
+    const byNumber = new Map<number, PrMeta>();
+    for (let page = 1; ; page++) {
+      const rows = await withRetry(() =>
+        withTimeout(
+          this.octokit.rest.pulls
+            .list({
+              owner: repo.owner,
+              repo: repo.name,
+              state: 'all',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: PULLS_PER_PAGE,
+              page,
+            })
+            .then((res) => res.data),
+          TIMEOUT,
+        ),
+      );
+      for (const pr of rows) {
+        byNumber.set(pr.number, {
+          number: pr.number,
+          title: pr.title,
+          author: pr.user?.login ?? 'unknown',
+          branch: pr.head.ref,
+          base: pr.base.ref,
+          head_sha: pr.head.sha,
+          additions: 0,
+          deletions: 0,
+          files_count: 0, // not present on the list payload; populated by getPullRequest
+          status: mapStatus(pr.state, Boolean(pr.merged_at)) as PrStatus,
+          opened_at: pr.created_at,
+          updated_at: pr.updated_at,
+        });
+      }
+      if (rows.length < PULLS_PER_PAGE) break;
+      const oldest = rows[rows.length - 1];
+      if (since !== null && oldest && Date.parse(oldest.updated_at) < since) break;
+    }
+    return [...byNumber.values()];
+  }
+
+  async getDiffStats(repo: RepoRef, numbers: number[]): Promise<PrDiffStats[]> {
+    const wanted = numbers.filter((n) => Number.isInteger(n) && n > 0);
+    const out: PrDiffStats[] = [];
+    for (let i = 0; i < wanted.length; i += STATS_PER_QUERY) {
+      const batch = wanted.slice(i, i + STATS_PER_QUERY);
+      // GraphQL refused (a token it won't take, an outage): a few by REST instead;
+      // the poll asks again next time for the rest.
+      const nodes = await this.statsByGraphql(repo, batch).catch((err: unknown) => {
+        this.log?.warn(
+          { err, repo: `${repo.owner}/${repo.name}`, prs: wanted.length - i },
+          `GitHub GraphQL refused the diff-stats query; fetching up to ${REST_STATS_LIMIT} PRs by REST instead`,
+        );
+        return null;
+      });
+      if (!nodes) return [...out, ...(await this.statsByRest(repo, wanted.slice(i, i + REST_STATS_LIMIT)))];
+      out.push(...nodes);
+    }
+    return out;
+  }
+
+  /** One query for up to 100 PRs: an aliased `pullRequest(number:)` field each. */
+  private async statsByGraphql(repo: RepoRef, numbers: number[]): Promise<PrDiffStats[]> {
+    const fields = numbers
+      .map((n) => `p${n}: pullRequest(number: ${n}) { number additions deletions changedFiles }`)
+      .join(' ');
+    const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`;
+    const data = await withRetry(() =>
       withTimeout(
-        (async () => {
-          // Fetch open + recently merged/closed (most-recently-updated first) so
-          // the list shows which PRs are merged vs still open — not just open.
-          const res = await this.octokit.rest.pulls.list({
-            owner: repo.owner,
-            repo: repo.name,
-            state: 'all',
-            sort: 'updated',
-            direction: 'desc',
-            per_page: 50,
-          });
-          return res.data.map((pr) => ({
-            number: pr.number,
-            title: pr.title,
-            author: pr.user?.login ?? 'unknown',
-            branch: pr.head.ref,
-            base: pr.base.ref,
-            head_sha: pr.head.sha,
-            additions: 0,
-            deletions: 0,
-            files_count: 0, // not present on the list payload; populated by getPullRequest
-            status: mapStatus(pr.state, Boolean(pr.merged_at)) as PrStatus,
-            opened_at: pr.created_at,
-            updated_at: pr.updated_at,
-          }));
-        })(),
+        this.octokit.graphql<StatsData>(query, { owner: repo.owner, name: repo.name }).catch((err: unknown) => {
+          // A number GitHub can't resolve fails the query but leaves the rest in `data`.
+          const partial = (err as { data?: StatsData }).data;
+          if (partial?.repository) return partial;
+          throw err;
+        }),
         TIMEOUT,
       ),
     );
+    return Object.values(data.repository ?? {})
+      .filter((node): node is NonNullable<StatsNode> => node != null)
+      .map((node) => ({
+        number: node.number,
+        additions: node.additions,
+        deletions: node.deletions,
+        files_count: node.changedFiles,
+      }));
+  }
+
+  private async statsByRest(repo: RepoRef, numbers: number[]): Promise<PrDiffStats[]> {
+    const out: PrDiffStats[] = [];
+    for (let i = 0; i < numbers.length; i += REST_STATS_CONCURRENCY) {
+      const batch = await Promise.all(
+        numbers.slice(i, i + REST_STATS_CONCURRENCY).map((n) =>
+          withRetry(() =>
+            withTimeout(this.octokit.rest.pulls.get({ owner: repo.owner, repo: repo.name, pull_number: n }), TIMEOUT),
+          )
+            .then(({ data }) => ({
+              number: n,
+              additions: data.additions,
+              deletions: data.deletions,
+              files_count: data.changed_files,
+            }))
+            .catch(() => null),
+        ),
+      );
+      out.push(...batch.filter((s): s is PrDiffStats => s !== null));
+    }
+    return out;
   }
 
   async getPullRequest(repo: RepoRef, n: number): Promise<PrDetail> {
@@ -76,13 +187,15 @@ export class OctokitGitHubClient implements GitHubClient {
             repo: repo.name,
             pull_number: n,
           });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
+          // Every page: one page is 100 files, and a PR's reviewed diff falls back
+          // to these files — a missing page means a partial review.
+          const files = await this.octokit.paginate(this.octokit.rest.pulls.listFiles, {
             owner: repo.owner,
             repo: repo.name,
             pull_number: n,
             per_page: 100,
           });
-          const { data: commits } = await this.octokit.rest.pulls.listCommits({
+          const commits = await this.octokit.paginate(this.octokit.rest.pulls.listCommits, {
             owner: repo.owner,
             repo: repo.name,
             pull_number: n,
@@ -148,16 +261,15 @@ export class OctokitGitHubClient implements GitHubClient {
             pull_number: n,
             body: review.body,
             event: review.event,
-            comments: review.comments?.map((c) => ({
-              path: c.path,
-              line: c.line,
-              body: c.body,
-            })),
+            ...(review.comments
+              ? { comments: review.comments.map((c) => ({ path: c.path, line: c.line, body: c.body })) }
+              : {}),
           });
           return { id: String(res.data.id) };
         })(),
         TIMEOUT,
       ),
+      NO_RETRY,
     );
   }
 
@@ -239,6 +351,7 @@ export class OctokitGitHubClient implements GitHubClient {
         })(),
         TIMEOUT,
       ),
+      NO_RETRY,
     );
   }
 
@@ -258,6 +371,7 @@ export class OctokitGitHubClient implements GitHubClient {
         })(),
         TIMEOUT,
       ),
+      NO_RETRY,
     );
   }
 
@@ -326,6 +440,7 @@ export class OctokitGitHubClient implements GitHubClient {
         })(),
         TIMEOUT,
       ),
+      NO_RETRY,
     );
   }
 

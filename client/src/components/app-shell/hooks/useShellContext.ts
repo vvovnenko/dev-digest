@@ -3,30 +3,31 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
 import { type ShellContext } from "@devdigest/ui";
 import { useTheme } from "../../../lib/theme";
 import { useActiveRepo } from "../../../lib/repo-context";
-import { usePulls, useDeleteRepo } from "../../../lib/hooks";
+import { usePulls } from "../../../lib/hooks";
 import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
   onOpenCommandPalette: () => void;
+  /** The switcher's "remove" — asks first (`useRemoveRepo`), so it only requests. */
+  onRemoveRepo: (id: string) => void;
 }
 
 /**
  * Assembles the `ShellContext` consumed by AppFrame: active nav key, the repo
  * list/active repo (mapped to the shell shape), theme, PR count, and the repo
- * selection / add / removal actions.
+ * selection / add actions; removal is the `onRemoveRepo` it is given.
  */
-export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): ShellContext {
-  const t = useTranslations("shell");
+export function useShellContext({ onOpenCommandPalette, onRemoveRepo }: ShellContextOptions): ShellContext {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const { theme, toggle } = useTheme();
   const { repoId, repos, activeRepo, setRepoId } = useActiveRepo();
-  const { data: pulls } = usePulls(repoId);
-  const deleteRepo = useDeleteRepo();
+  // The badge polls only where PR statuses are on screen: each GET makes the
+  // server sync with GitHub. Elsewhere it refreshes on focus and navigation.
+  const { data: pulls } = usePulls(repoId, { poll: pathname.startsWith("/repos/") });
 
   const onSelectRepo = React.useCallback(
     (id: string) => {
@@ -37,25 +38,6 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
   );
 
   const onAddRepo = React.useCallback(() => router.push("/onboarding"), [router]);
-
-  const onRemoveRepo = React.useCallback(
-    (id: string) => {
-      const target = repos.find((r) => r.id === id);
-      const ok = window.confirm(
-        t("removeRepo.confirm", { name: target?.full_name ?? t("removeRepo.fallbackName") }),
-      );
-      if (!ok) return;
-      deleteRepo.mutate(id, {
-        onSuccess: () => {
-          if (repoId === id) {
-            const next = repos.find((r) => r.id !== id);
-            router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
-          }
-        },
-      });
-    },
-    [repos, repoId, t, deleteRepo, router],
-  );
 
   return React.useMemo<ShellContext>(
     () => ({

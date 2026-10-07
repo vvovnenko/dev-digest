@@ -43,7 +43,7 @@ export function useResyncRepoIntel(repoId: string | null | undefined) {
   return useMutation({
     mutationFn: () => api.post<{ status: string }>(`/repos/${repoId}/resync`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
+      void qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
     },
   });
 }

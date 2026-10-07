@@ -43,8 +43,9 @@ export type ReviewRecord = z.infer<typeof ReviewRecord>;
 
 /**
  * Response of `POST /pulls/:id/review`. Each requested agent produces a run that
- * streams over SSE at `/runs/:runId/events`; clients subscribe per run. The
- * persisted reviews are also returned once the (synchronous) run completes.
+ * streams over SSE at `/runs/:runId/events`; clients subscribe per run. Runs are
+ * fire-and-forget, so `reviews` is always `[]`: read `GET /pulls/:id/reviews` once
+ * they finish.
  */
 export const ReviewRunTarget = z.object({
   run_id: z.string(),

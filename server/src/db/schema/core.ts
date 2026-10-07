@@ -1,14 +1,20 @@
-import { pgTable, uuid, text, jsonb, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, uuid, text, jsonb, uniqueIndex, unique, primaryKey } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 
 // ============================================================ Tenancy & core
 
-export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull(),
-  name: text('name').notNull(),
-  createdAt: now(),
-});
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    createdAt: now(),
+  },
+  // The auth provider looks users up by email: one user per address.
+  (t) => ({ emailUq: uniqueIndex('users_email_lower_uq').on(sql`lower(${t.email})`) }),
+);
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -43,6 +49,7 @@ export const settings = pgTable(
     value: jsonb('value'),
   },
   (t) => ({
-    uq: uniqueIndex('settings_ws_user_key_uq').on(t.workspaceId, t.userId, t.key),
+    // NULLS NOT DISTINCT: a workspace-wide setting (user_id null) is one row, not one per write.
+    uq: unique('settings_ws_user_key_uq').on(t.workspaceId, t.userId, t.key).nullsNotDistinct(),
   }),
 );

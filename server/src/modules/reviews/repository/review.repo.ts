@@ -1,15 +1,18 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../../../db/client.js';
+import type { Db, DbExecutor } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Finding } from '@devdigest/shared';
 import type { FindingRow, PullRow } from '../../../db/rows.js';
+import type { RunUsage } from '../domain.js';
+
+export type { RunUsage };
 
 export type ReviewRow = typeof t.reviews.$inferSelect;
 
 // ---- reviews + findings ---------------------------------------------------
 
 export async function insertReview(
-  db: Db,
+  db: DbExecutor,
   values: {
     workspaceId: string;
     prId: string;
@@ -27,7 +30,7 @@ export async function insertReview(
 }
 
 export async function insertFindings(
-  db: Db,
+  db: DbExecutor,
   reviewId: string,
   findings: Finding[],
 ): Promise<FindingRow[]> {
@@ -54,37 +57,42 @@ export async function insertFindings(
   return rows;
 }
 
-/** Usage of the run that produced a review; all null when the review has no run. */
-export interface RunUsage {
-  costUsd: number | null;
-  tokensIn: number | null;
-  tokensOut: number | null;
-}
-
 /** Reviews for a PR (newest first), each with its findings and its run's usage. */
 export async function reviewsForPull(
   db: Db,
   prId: string,
-): Promise<{ review: ReviewRow; findings: FindingRow[]; usage: RunUsage }[]> {
-  // `reviews.run_id` has no FK to `agent_runs`, hence a LEFT join.
+  page: { limit: number; offset: number },
+): Promise<{ review: ReviewRow; findings: FindingRow[]; usage: RunUsage; agentName: string | null }[]> {
+  // `reviews.run_id` and `agent_id` are nullable (not every review comes from a run or an agent), hence LEFT joins.
   const rows = await db
     .select({
       review: t.reviews,
+      agentName: t.agents.name,
       costUsd: t.agentRuns.costUsd,
       tokensIn: t.agentRuns.tokensIn,
       tokensOut: t.agentRuns.tokensOut,
     })
     .from(t.reviews)
     .leftJoin(t.agentRuns, eq(t.agentRuns.id, t.reviews.runId))
+    .leftJoin(t.agents, eq(t.agents.id, t.reviews.agentId))
     .where(eq(t.reviews.prId, prId))
-    .orderBy(desc(t.reviews.createdAt));
+    .orderBy(desc(t.reviews.createdAt), desc(t.reviews.id))
+    .limit(page.limit)
+    .offset(page.offset);
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.review.id);
-  const findings = await db.select().from(t.findings).where(inArray(t.findings.reviewId, ids));
-  return rows.map(({ review, costUsd, tokensIn, tokensOut }) => ({
+  // One pass over the findings (not one scan per review).
+  const byReview = new Map<string, FindingRow[]>();
+  for (const f of await db.select().from(t.findings).where(inArray(t.findings.reviewId, ids))) {
+    const list = byReview.get(f.reviewId);
+    if (list) list.push(f);
+    else byReview.set(f.reviewId, [f]);
+  }
+  return rows.map(({ review, agentName, costUsd, tokensIn, tokensOut }) => ({
     review,
-    findings: findings.filter((f) => f.reviewId === review.id),
+    findings: byReview.get(review.id) ?? [],
     usage: { costUsd, tokensIn, tokensOut },
+    agentName,
   }));
 }
 

@@ -7,8 +7,7 @@ import {
   MockCodeIndex,
   MockEmbedder,
 } from '../src/adapters/mocks.js';
-import { assemblePrompt } from '../src/platform/prompt.js';
-import { groundFindings } from '../src/platform/grounding.js';
+import { assemblePrompt, groundFindings } from '@devdigest/reviewer-core';
 import { estimateCost } from '../src/adapters/llm/pricing.js';
 
 describe('mock adapters (no network)', () => {
@@ -103,5 +102,10 @@ describe('pricing / cost discipline', () => {
   it('estimates cost for known models and returns null for unknown', () => {
     expect(estimateCost('gpt-4o-mini', 1_000_000, 0)).toBeCloseTo(0.15, 5);
     expect(estimateCost('some-future-model', 1000, 1000)).toBeNull();
+  });
+
+  it('prices current Claude models, a dated snapshot as its alias', () => {
+    expect(estimateCost('claude-opus-5-5', 1_000_000, 1_000_000)).toBeCloseTo(24, 9); // 4 + 20
+    expect(estimateCost('claude-haiku-4-5-20251001', 1_000_000, 0)).toBeCloseTo(1, 9);
   });
 });

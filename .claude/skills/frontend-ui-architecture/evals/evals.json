@@ -1,0 +1,93 @@
+{
+  "skill_name": "frontend-ui-architecture",
+  "evals": [
+    {
+      "id": 1,
+      "name": "pulls-page-logic",
+      "prompt": "The PR list page in client/src/app/repos/[repoId]/pulls/page.tsx does a bunch of filtering, searching, sorting and counting inline. Clean it up so the logic lives where it should in this codebase.",
+      "expected_output": "Pure filter/sort/count helpers in pulls/helpers.ts with a helpers.test.ts, OPEN_STATUSES moved to pulls/constants.ts, page.tsx only composes; no utils/ folder, no pseudo-hooks, no unrelated edits.",
+      "files": [],
+      "expectations": [
+        "Filtering, search and sorting logic moves out of page.tsx into pure function(s) in the route's pulls/helpers.ts",
+        "The open / needs-review counting moves out of page.tsx into a pure helper",
+        "OPEN_STATUSES (the open-status set) moves from page.tsx into pulls/constants.ts",
+        "A unit test for the new helpers is proposed (e.g. pulls/helpers.test.ts)",
+        "No utils/ folder or catch-all utils/common module is created",
+        "New functions that call no React hooks are not named use* and do not import React",
+        "Source-code changes stay within the pulls route (page, helpers, constants, their test); no unrelated source file is refactored",
+        "Behaviour is preserved: header counts use the unfiltered list, sorting does not mutate the query data, and filter/search/sort semantics (status 'all', title-or-number match, newest by default, missing dates as 0) are unchanged",
+        "Stale file:line citations to the pulls page in client/specs/pages.md and e2e/specs/flows.md are corrected in place in the same change and match the edited files; INSIGHTS.md is not edited by hand",
+        "The proposed diffs apply to the current files, the proposed helpers.test.ts passes, and the result typechecks (verify on a scratch copy)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "dedupe-format-and-colors",
+      "prompt": "formatWhen is copy-pasted in ReviewRunAccordion and in diff-viewer's CommentCard, and there are two severity colour maps (FindingCard's constants and the FindingsSection inside RunTraceDrawer) that don't even agree with each other. Fix the duplication.",
+      "expected_output": "One formatter in src/lib/<purpose>.ts imported by both; one severity colour map owned by a shared module, typed by the Severity union; the --sugg vs --accent conflict surfaced for the user to decide; no utils/ or export * barrels.",
+      "files": [],
+      "expectations": [
+        "The formatWhen replacement lives in one shared module outside src/app (src/lib/<purpose>.ts or similar), named for its purpose, not utils.ts",
+        "Both ReviewRunAccordion.tsx and diff-viewer/CommentCard.tsx import the shared formatter and their local copies are removed",
+        "No new severity colour map is created: FindingCard and FindingsSection both reuse the design system's existing SEV from @devdigest/ui",
+        "The --accent -> --sugg token change appears in the proposal's questions for the user (not only in the rationale), with a note on whether it is visible",
+        "The defensive fallback for unknown severity values in FindingsSection is preserved, so behaviour for bad stored data is unchanged",
+        "No new utils/ folder and no new `export *` barrel is introduced",
+        "The shared formatter keeps formatWhen's exact behaviour (same body/output, including returning the input for an invalid date)",
+        "Contract docs citing moved ReviewRunAccordion/CommentCard lines (client/specs/pages.md, e2e/specs/flows.md) are corrected in place, or the proposal shows that no cited line moves"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "run-filters-component",
+      "prompt": "On the PR page's Review runs tab I want a filter bar above the runs: chips to filter by agent and by verdict (approve / request changes / comment). Plan where every piece goes and write the code for it.",
+      "expected_output": "Route-local _components/RunFilters/ with RunFilters.tsx + index.ts + constants.ts + helpers.ts (+ tests) + styles.ts; labels in messages/en/prReview.json; style={s.x}; pure filter helper; no new fetch; selection owned by the parent (or URL).",
+      "files": [],
+      "expectations": [
+        "The filter bar is a route-local component under pulls/[number]/_components/<Name>/ with <Name>.tsx and index.ts",
+        "Styling uses a colocated styles.ts consumed as style={s.x}; no Tailwind utility classNames",
+        "New UI copy (group labels, empty state) is added as keys in messages/en/prReview.json, and the existing verdict label keys are reused rather than duplicated",
+        "Run-filtering logic is a pure helper (helpers.ts), not inline in JSX, and a unit test for it is proposed",
+        "No new network call: no fetch/api usage and no new query hook; it reuses already-loaded review data",
+        "Filter options / verdict keys are module-level constants (constants.ts), typed via as const or the Verdict union",
+        "Selection state has a single owner (the parent rendering the runs, or the URL) and is passed to the bar via props",
+        "Chips use @devdigest/ui primitives (e.g. Chip) rather than new hand-built buttons",
+        "A constant map needed by a second component (e.g. VerdictBanner's VERDICT_META) is moved to the nearest common level (route-level constants) instead of being imported from a sibling component's folder",
+        "Integration with existing behaviour is handled: a Timeline jump to a filtered-out run still works, and changing a filter does not re-scroll to a stale Timeline target",
+        "After a filter change at most one run accordion is open, or the proposal otherwise prevents two FindingsPanels from handling j/k/a/d at once",
+        "The stale-Timeline-target case (a filter change must not re-scroll to an old jump target) is covered by a proposed test",
+        "Contract docs citing shifted FindingsTab/ReviewRunAccordion lines (client/specs/pages.md, e2e/specs/flows.md) are corrected in place, not left stale or only annotated"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "hook-vs-helper-promotion",
+      "prompt": "The findings list inside the run trace drawer (FindingsSection) should get the same 'Hide low confidence' toggle that FindingsPanel has on the Review runs tab. Add a useVisibleFindings(findings, hideLow) hook so both components share the filtering.",
+      "expected_output": "Explains that useVisibleFindings(findings, hideLow) calls no hooks, so it should be the existing pure visibleFindings helper promoted with its constants to the pulls/[number] route rung; FindingsPanel re-imports from there; toggle state stays local in FindingsSection; existing hideLowConfidence copy reused; helper test.",
+      "files": [],
+      "expectations": [
+        "The shared filtering is a plain non-use* pure function; the proposal explains that useVisibleFindings(findings, hideLow) would call no hooks, or makes the hook genuinely stateful and says why",
+        "The existing visibleFindings logic from FindingsPanel/helpers.ts is reused instead of rewriting the filter",
+        "The shared helper and the constants it needs (LOW_CONFIDENCE_THRESHOLD, severity order) move to the route rung (pulls/[number]/helpers.ts / constants.ts) or reuse shared equivalents, and are never imported from FindingsPanel's folder",
+        "FindingsPanel imports from the new location and no copy of the helper or its constants remains in its folder",
+        "The hide-low toggle state stays local to FindingsSection (not lifted into context or a global store)",
+        "A unit test for the promoted helper is proposed",
+        "The toggle label reuses the existing prReview hideLowConfidence message (or another messages/en key), not hardcoded English"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "server-fetch-decision",
+      "prompt": "Make the /agents page load the agent list on the server so it renders without the loading skeleton.",
+      "expected_output": "Flags that nothing fetches on the server today and this adds a second data path, asks before applying; if proposing, prefetches ['agents'] into a per-request QueryClient via the existing api client and hydrates with HydrationBoundary, keeping page.tsx a thin server component and 'use client' on AgentsListView, with client invalidation intact.",
+      "files": [],
+      "expectations": [
+        "The proposal identifies that nothing in client/ fetches on the server today and that this adds a second data path, and asks the user to confirm before applying",
+        "TanStack Query stays the owner of the agent list: the server only prefetches into a per-request QueryClient under the same ['agents'] key and hydrates it (HydrationBoundary/dehydrate), instead of passing raw agents as props",
+        "The server-side request goes through the existing api client (src/lib/api.ts) or a server-only module, not an ad-hoc fetch() in page.tsx",
+        "page.tsx stays a thin Server Component and \"use client\" stays on AgentsListView (not added to page.tsx)",
+        "Existing client behaviour still works: create/delete invalidation and refetch through useAgents, and loading/error handling on client-side navigation"
+      ]
+    }
+  ]
+}

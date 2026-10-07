@@ -6,15 +6,12 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Card, Avatar, Markdown } from "@devdigest/ui";
 import type { PrReviewComment } from "@/lib/types";
+import { useDateFormat } from "@/lib/format";
 import { cs } from "../comments";
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
 
 export function CommentCard({ c }: { c: PrReviewComment }) {
   const t = useTranslations("shell");
+  const formatWhen = useDateFormat();
   return (
     <Card>
       <div style={cs.headRow}>

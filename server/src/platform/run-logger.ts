@@ -33,9 +33,12 @@ const LEVEL: Record<RunEventKind, keyof PinoLike> = {
   error: 'error',
 };
 
+/** The part of the RunBus a run logger writes to and reads back. */
+export type RunLogSink = Pick<RunBus, 'publish' | 'buffer'>;
+
 export class RunLogger {
   constructor(
-    private readonly bus: RunBus,
+    private readonly bus: RunLogSink,
     private readonly runIds: string[],
     private readonly base?: PinoLike,
     private readonly ctx: Record<string, unknown> = {},

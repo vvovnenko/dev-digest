@@ -31,7 +31,7 @@ export function MermaidDiagram({ chart }: { chart: string }) {
       return;
     }
     setState("pending");
-    (async () => {
+    void (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });

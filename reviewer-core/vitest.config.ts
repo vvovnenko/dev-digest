@@ -13,5 +13,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
+    // Report only (no thresholds): `npm run coverage`.
+    coverage: { provider: 'v8', include: ['src/**/*.ts'], reporter: ['text-summary', 'html'] },
   },
 });
