@@ -83,6 +83,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
   found") → filter by a filename substring: `pnpm exec vitest run RunHistory.test`.
   Evidence: `src/app/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.test.tsx`.
   - **2026-09-23** — Line evidence: discovery is the single include glob in `vitest.config.ts:18` (`src/**/*.test.{ts,tsx}`), run by `package.json:10` (`vitest run`); a filename substring such as `RunHistory.test` worked again in the HW1 fixes (blocks A–B).
+  - **2026-10-08** — Not reproducible now: the quoted full path with `(shell)`, `[repoId]` and `[number]` found `RunHistory.test.tsx` with both `pnpm exec vitest run '<path>'` and `node_modules/.bin/vitest run '<path>'` (Test Files 1 passed) — quote the path in zsh, where an unquoted `[repoId]` is a glob; the filename-substring filter still works and is shorter. Evidence: `client/vitest.config.ts:18`
 - **2026-09-23** — `Chip` from `@devdigest/ui` renders a plain `<button>` with no `aria-pressed`, so a toggle-filter's active state is visual only and the vendored kit can't be edited → in tests, assert a filter through the cards it leaves (`[data-finding-id]`), not through the button's state. Evidence: `src/vendor/ui/primitives/Chip.tsx:22`, `src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.test.tsx`.
 - **2026-09-28** — The `export *` barrel of `@devdigest/ui` does not drag charts into pages: after `next build` no client chunk contains `recharts`, `d3-shape` or `mermaid` (webpack tree-shakes it; recharts declares `sideEffects: false`) → don't spend effort splitting the vendored barrel; measure with `grep -rl recharts .next/static/chunks` first. Evidence: `src/vendor/ui/index.ts:7`, `node_modules/recharts/package.json:9`
 - **2026-09-28** — An SSE stream the server ends normally fires `EventSource.onerror` with `readyState` CONNECTING and the browser reconnects after the `retry` fastify-sse-v2 sends (3000 ms) — so "close on any error" also killed real reconnects, and a reconnect replays the run from seq 1 → end on an explicit terminal event (`done`), treat only CLOSED as final, and de-duplicate by run + seq. Evidence: `../server/node_modules/fastify-sse-v2/lib/plugin.js:38`, `src/lib/hooks/reviews.ts:251`, `src/lib/hooks/reviews.test.tsx:98`
@@ -161,6 +162,7 @@ Entry format: `- **YYYY-MM-DD** — claim. Evidence: \`path:line\``
 - **2026-10-05** — Global shortcuts paused under an open `aria-modal` (`isModalOpen` in shortcut-guards, useGlobalShortcuts, tests, ui-architecture.md): +1 nuance (What doesn't work, fixed)
 - **2026-10-05** — Skill Config Enabled toggle stopped following the list after off→on without Save (`ConfigTab` draft pruning, 2 tests, browser check, pages.md citations): +1 (Codebase patterns) + 1 nuance (agent ConfigTab still affected)
 - **2026-10-05** — Agent Config Enabled toggle: same draft pruning as skills (`helpers.ts` `changedFields`, 2 + 2 tests, browser check, pages.md citation): +1 nuance (What doesn't work, fixed)
+- **2026-10-08** — test-writer-ui headless runs (vitest path check): +1 (Tool & library notes nuance)
 
 ## Open questions
 

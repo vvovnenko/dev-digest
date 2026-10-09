@@ -117,6 +117,12 @@ Do the steps in the plan's order. For each step:
 5. **Write the tests** the step lists, next to the code they cover
    (`TESTING.md`: behaviour at the seams; a test that imports
    `test/helpers/pg.ts` is `*.it.test.ts`).
+   If the brief says `test-writer-ui` or `test-writer-backend` already wrote a
+   step's tests (test-first, red), don't write them again and don't change
+   their assertions — make them pass. A test you believe is wrong goes under
+   **Deviations** and stays as written. A step marked `Test mode: test-first`
+   whose test files are not in the tree yet → stop before that step (PARTIAL
+   if earlier steps are done, else BLOCKED); don't write those tests yourself.
 6. **Run the step's `Verify:` line** before you start the next step.
 
 Docs and specs the plan lists come last; remap their `file:line` citations once,

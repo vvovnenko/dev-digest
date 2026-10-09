@@ -177,6 +177,20 @@ package's typecheck:
 `pnpm arch`, lint and e2e flows are not `Verify:` lines: they go to §6 and §9
 for the reviewers and the caller.
 
+Every step gets a `Test mode:` line — the user confirms or changes it when
+approving the plan:
+
+- `test-first` — `test-writer-ui` (`client/`) or `test-writer-backend` (`server/`,
+  `reviewer-core/`) writes the step's tests red before the step; the implementer
+  then makes them pass without changing them. Choose it when the behaviour can be
+  stated as inputs → outputs before the code exists: a domain rule, a pure
+  helper, a contract's statuses and error codes, a bug to reproduce. The step's
+  `Tests:` line is then that agent's brief: name the test file and every case
+  with its expected result.
+- `implementer` — the implementer writes the tests with the code: wiring, UI
+  composition, config, steps whose behaviour only shows once the code exists.
+- `—` — the step has no behaviour to test (docs, a message key, a rename); say why.
+
 ## 5. Development Plan
 
     # Development Plan: <title>
@@ -219,6 +233,7 @@ for the reviewers and the caller.
     - Hard rules: `<rule_id>`, …
     - Insights: <entries from §1 that bind this step, or "—">
     - Tests: add `<path>` — <behaviour>; existing: `<path>`
+    - Test mode: test-first (test-writer-backend) | implementer | — — <why, one clause>
     - Verify: `<commands>`
 
     ## 5. Skill map
@@ -238,6 +253,8 @@ for the reviewers and the caller.
     ## 9. Review hand-off
     - Architecture: <new modules, ports, cross-module access, transactions>
     - Security: <untrusted input paths, secrets, new endpoints>
+    - Test-first: <S1 (test-writer-backend), S3 (test-writer-ui) — the steps marked so in §4, or none>
+    - Docs: <new docs for doc-writer beyond the stale docs a step fixes, or none>
 
 ## Rules for every plan
 
@@ -257,3 +274,4 @@ for the reviewers and the caller.
   Ukrainian plan, though these instructions are in English. Keep the template's
   headings and labels (`## 4. Steps`, `Files:`, `Verify:`, `S1`, `D1`), paths,
   commands and `rule_id`s as they are.
+  `Test mode:` keeps its values in English too: `test-first`, `implementer`, `—`.
