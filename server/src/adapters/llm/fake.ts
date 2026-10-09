@@ -17,6 +17,15 @@ import type {
 export const FAKE_FINDING_TITLE = 'Fake finding on the first added line';
 const FAKE_LATENCY_MS = 1500;
 
+/** The intent the fake derives for any PR (deterministic; the code still caps its confidence). */
+export const FAKE_INTENT = {
+  summary: 'Deterministic intent from the fake LLM (DEVDIGEST_FAKE_LLM=1).',
+  in_scope: ['The files this pull request changes'],
+  out_of_scope: [],
+  confidence: 'medium',
+  missing_context: [],
+};
+
 /** The first added line of the first file in a unified diff embedded in `text`. */
 export function firstAddedLine(text: string): { file: string; line: number } | null {
   let file: string | null = null;
@@ -69,17 +78,22 @@ export class FakeReviewLlm implements LLMProvider {
           ]
         : [],
     };
-    const parsed = req.schema.safeParse(review);
-    if (!parsed.success) throw new Error(`FakeReviewLlm: ${req.schemaName} rejected the fake review`);
-    return {
-      data: parsed.data,
-      model: req.model,
-      tokensIn: 10,
-      tokensOut: 5,
-      costUsd: 0,
-      raw: JSON.stringify(review),
-      attempts: 1,
-    };
+    // The first fixture the asked-for schema accepts: a review, or the intent of a PR.
+    for (const fixture of [review, FAKE_INTENT]) {
+      const parsed = req.schema.safeParse(fixture);
+      if (parsed.success) {
+        return {
+          data: parsed.data,
+          model: req.model,
+          tokensIn: 10,
+          tokensOut: 5,
+          costUsd: 0,
+          raw: JSON.stringify(fixture),
+          attempts: 1,
+        };
+      }
+    }
+    throw new Error(`FakeReviewLlm: ${req.schemaName} rejected the fake answers`);
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {

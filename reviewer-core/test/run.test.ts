@@ -162,3 +162,68 @@ describe('reviewPullRequest (engine)', () => {
     expect(outcome.assembly.skill_blocks?.map((b) => b.name)).toEqual(['branch-coverage', 'edge-cases']);
   });
 });
+
+/**
+ * reviewPullRequest with `intent` (plan docs/plans/2026-10-09-intent-layer.md: U1 line 26,
+ * S3 lines 286-291 and 315-318). Scope filtering happens after grounding, before verdict/score.
+ */
+describe('reviewPullRequest (engine) — intent scope', () => {
+  const flagged = (severity: 'WARNING' | 'CRITICAL', outOfScope: boolean) => ({
+    verdict: 'comment',
+    summary: 's',
+    score: 50,
+    findings: [
+      {
+        id: 'f-scope',
+        severity,
+        category: 'bug',
+        title: 'unrelated cleanup issue',
+        file: 'src/config.ts',
+        start_line: 11,
+        end_line: 11,
+        rationale: 'r',
+        confidence: 0.9,
+        kind: 'finding',
+        out_of_scope: outOfScope,
+      },
+    ],
+  });
+  const intent = {
+    summary: 'Add rate limiting',
+    in_scope: ['rate limiter'],
+    out_of_scope: ['config cleanup'],
+    confidence: 'medium' as const,
+    stale: false,
+  };
+  const run = (fx: unknown, withIntent: boolean) =>
+    reviewPullRequest({
+      systemPrompt: 'sys',
+      model: 'm',
+      diff: CONFIG_DIFF,
+      llm: fixtureLlm(fx),
+      ...(withIntent ? { intent } : {}),
+    });
+
+  it('a lone out-of-scope WARNING is dropped: approve, score 100, listed in dropped', async () => {
+    const outcome = await run(flagged('WARNING', true), true);
+    expect(outcome.review.findings).toHaveLength(0);
+    expect(outcome.review.verdict).toBe('approve');
+    expect(outcome.review.score).toBe(100);
+    expect(outcome.dropped.map((d) => d.finding.title)).toContain('unrelated cleanup issue');
+  });
+
+  it('an out-of-scope CRITICAL stays and still requests changes', async () => {
+    const outcome = await run(flagged('CRITICAL', true), true);
+    expect(outcome.review.findings.map((f) => f.id)).toEqual(['f-scope']);
+    expect(outcome.review.verdict).toBe('request_changes');
+    expect(outcome.review.score).toBe(65);
+  });
+
+  it('without intent the same flagged WARNING is kept, as before', async () => {
+    const outcome = await run(flagged('WARNING', true), false);
+    expect(outcome.review.findings.map((f) => f.id)).toEqual(['f-scope']);
+    expect(outcome.review.verdict).toBe('comment');
+    expect(outcome.review.score).toBe(88);
+    expect(outcome.dropped).toEqual([]);
+  });
+});

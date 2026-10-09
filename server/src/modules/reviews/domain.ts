@@ -75,6 +75,8 @@ export interface FindingRecord {
   confidence: number;
   kind: string;
   trifectaComponents: string[] | null;
+  /** The reviewer flagged it as outside the PR intent. */
+  outOfScope: boolean;
   acceptedAt: Date | null;
   dismissedAt: Date | null;
 }

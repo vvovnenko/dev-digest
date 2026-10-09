@@ -58,6 +58,17 @@ really cost, read its recorded cost (`agent_runs.cost_usd`, the Timeline's cost 
 3. **Mixed strategy.** Cheap model for advisory/Performance passes, a strong model
    for the agent that actually blocks merge (Security). Cost follows importance.
 
+## The intent model
+
+The PR intent is derived by a separate feature model, `review_intent` (Settings →
+Feature Models → "PR Review · Intent"), not by the agent's model. Default `openrouter` /
+`openai/gpt-5.4-nano` (`../../server/src/vendor/shared/contracts/platform.ts:52-57`): a
+cheap, fast model with structured outputs and no reasoning by default. Needs
+`OPENROUTER_API_KEY`. The call has `max_tokens` 8000, so a reasoning model fits too
+(`../../server/src/modules/intent/constants.ts:14`). Its cost is in `pr_intent.cost_usd`,
+not in `agent_runs.cost_usd` or the PR list's COST. A live call on the seeded PR #483 took
+~3 s and 714 → 112 tokens ($0.00028).
+
 ## How to A/B test
 
 1. Point one agent at the new model (studio model dropdown, or `PUT /agents/:id`).

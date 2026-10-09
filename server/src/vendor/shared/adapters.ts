@@ -195,6 +195,8 @@ export interface GitHubClient {
   /** The open PR whose head is `branch`, if any (so re-publish reuses it). */
   findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null>;
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
+  /** The text of `path` at `ref` (a branch, tag or sha); null when it is missing, a directory or binary. */
+  getFileText(repo: RepoRef, path: string, ref: string): Promise<string | null>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
 }

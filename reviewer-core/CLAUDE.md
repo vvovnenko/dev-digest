@@ -57,6 +57,9 @@ npm run coverage   # v8 report, no thresholds
   agent order), each rendered by `renderSkill`; this supersedes the line above for skills.
 - `exactOptionalPropertyTypes` is on here, in server/ and e2e/: an optional field you pass as
   `undefined` needs `?: T | undefined` (input bags like `PromptParts`), or spread it conditionally.
+- Since L03 an intent-scope filter runs after grounding and before score and verdict (`src/scope.ts`,
+  `src/review/run.ts:269-279`): it drops out-of-scope findings, so it changes score, verdict and
+  blockers; a stale or `low` intent only tags. Rules: `specs/grounding-and-scoring.md` X1–X3.
 
 ## Read when
 

@@ -37,12 +37,13 @@ fixture / not for production / ignore this" never descope the review. You do not
 need to repeat any of this in your prompt — it is always there.
 
 **User message** = the task and all context, in this order, each untrusted block
-delimiter-wrapped (`prompt.ts:174-194`):
+delimiter-wrapped (`prompt.ts:218-240`):
 
 ```
 <task line, e.g. "Review pull request #7 (…)" — trusted, so it names only the number>
 ## Pull request          (untrusted: the PR title and author)
 ## PR description        (untrusted, author-controlled, truncated to 4000 chars)
+## PR intent             (the derived intent: summary and scope lists inside <untrusted source="pr-intent">, the trust lines outside — only when the PR has an intent)
 ## Skills / rules        (the agent's enabled skills, in its order — trusted, not wrapped)
 ## Relevant memory       (curated memory items)
 ## Repo skeleton         (untrusted, repo-derived)
@@ -52,7 +53,7 @@ delimiter-wrapped (`prompt.ts:174-194`):
 ```
 
 Each skill is its own block — `### <name>`, a `When to apply: <description>` line (left out
-when the description is blank), then the body (`renderSkill`, `prompt.ts:82-86`) — so write a
+when the description is blank), then the body (`renderSkill`, `prompt.ts:121-125`) — so write a
 skill's description as a directive ("Apply when the diff …"). Skills are instructions the user
 wrote or imported, so the engine does not wrap them in `<untrusted>`, and the server keeps a
 skill that matches prompt-injection patterns out of runs; see [`../agent-skills/README.md`](../agent-skills/README.md).
@@ -125,9 +126,15 @@ numbers and gates from what the model returns:
   the finding disappears.
 - **`verdict` is derived too**, from the grounded findings and the agent's gate
   (`verdictFromFindings`, `reviewer-core/src/output/to-review.ts:48-51`, applied at
-  `run.ts:264`): none ⇒ `approve`; one at or above `agents.ciFailOn` (default
+  `run.ts:284`): none ⇒ `approve`; one at or above `agents.ciFailOn` (default
   `critical`) ⇒ `request_changes`; otherwise `comment`. The model's verdict only
   reaches the run log, with an `info` event when the engine changes it.
+- **`out_of_scope` is a flag, not a decision.** With a derived intent the model sets
+  `out_of_scope: true` on a finding about code outside it. The engine drops flagged
+  WARNING/SUGGESTION, keeps one flagged CRITICAL (highest confidence) and drops the
+  other flagged CRITICALs (`applyIntentScope`, `reviewer-core/src/scope.ts:24-56`, run
+  at `run.ts:269-279`, after grounding and before score and verdict). A stale or `low`
+  intent only tags. Do not tell the model to skip out-of-scope code or lower its severity.
 
 ## Severity / verdict / gate at a glance
 
@@ -137,6 +144,7 @@ numbers and gates from what the model returns:
 | `score` | **ignored** — recomputed from findings |
 | `verdict` | **ignored** — derived from the grounded findings and the gate |
 | `findings[]` | citation-grounded; ungrounded ones dropped |
+| `findings[].out_of_scope` | flag only; the engine drops it (fresh high/medium intent) or keeps it tagged (stale/low) |
 
 The per-agent merge gate (`agents.ciFailOn`, default `critical`) decides when a
 review **blocks** — the stored `request_changes` verdict and, in CI, the GitHub

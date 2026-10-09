@@ -46,6 +46,9 @@ const EnvSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   ),
+  // A review run prepares the PR's intent first (derives it when the PR has none). Default ON;
+  // set DEVDIGEST_INTENT_ON_REVIEW=false to review without it (vitest does, to keep the tests' LLM calls countable).
+  DEVDIGEST_INTENT_ON_REVIEW: z.string().optional(),
   // How many review requests run at once; the rest wait their turn (each one's
   // agents already run one after another).
   REVIEW_CONCURRENCY: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().min(1).max(20).default(2)),
@@ -78,6 +81,8 @@ export type AppConfig = {
   repoIntelEnabled: boolean;
   /** DEVDIGEST_FAKE_LLM=1: reviews run against a deterministic fake LLM (hermetic e2e). */
   fakeLlm: boolean;
+  /** DEVDIGEST_INTENT_ON_REVIEW (default true): a review run derives the PR's intent first when it has none. */
+  intentOnReview: boolean;
   /** REVIEW_CONCURRENCY: review requests that run at once (default 2); the rest queue. */
   reviewConcurrency: number;
   /** TRACE_RETENTION_DAYS (default 90): prune older run traces; null (set to 0) keeps every trace. */
@@ -107,6 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
     fakeLlm: parsed.DEVDIGEST_FAKE_LLM === '1',
+    intentOnReview: parsed.DEVDIGEST_INTENT_ON_REVIEW !== 'false',
     reviewConcurrency: parsed.REVIEW_CONCURRENCY,
     traceRetentionDays: parsed.TRACE_RETENTION_DAYS === 0 ? null : parsed.TRACE_RETENTION_DAYS,
   };

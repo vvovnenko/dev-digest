@@ -15,5 +15,28 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "intent": {
+    "derive": "Derive intent",
+    "rederive": "Re-derive intent",
+    "deriving": "Deriving…",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "none": "Nothing listed.",
+    "noneYet": "No intent derived yet.",
+    "confidence": {
+      "high": "High confidence",
+      "medium": "Medium confidence",
+      "low": "Low confidence"
+    },
+    "lowHint": "Derived from title and changed files — add a description or link a spec for a sharper intent",
+    "sourceUnavailable": "{ref} — unavailable ({reason})",
+    "missing": "Missing: {items}",
+    "failed": "Deriving the intent failed.",
+    "stale": {
+      "head_changed": "The PR changed after this intent was derived — re-derive it.",
+      "description_changed": "The description changed after this intent was derived — re-derive it."
+    },
+    "staleGeneric": "This intent may be out of date — re-derive it."
   }
 }

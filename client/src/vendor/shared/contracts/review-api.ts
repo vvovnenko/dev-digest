@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import { Intent, IntentConfidence, IntentSource, SmartDiff } from './brief.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -61,9 +61,44 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+/** Intent persisted for a PR: the Intent plus how it was derived (from the last successful derive). */
+export const PrIntentRecord = Intent.extend({
+  pr_id: z.string(),
+  confidence: IntentConfidence,
+  sources: z.array(IntentSource),
+  missing_context: z.array(z.string()),
+  head_sha: z.string().nullable(),
+  derived_at: z.string(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
+
+/** Status of the latest derive attempt; `none` = never derived. */
+export const PrIntentStatus = z.enum(['none', 'queued', 'running', 'done', 'failed']);
+export type PrIntentStatus = z.infer<typeof PrIntentStatus>;
+
+export const PrIntentStaleReason = z.enum(['head_changed', 'description_changed']);
+export type PrIntentStaleReason = z.infer<typeof PrIntentStaleReason>;
+
+/**
+ * Response of `GET`/`POST /pulls/:id/intent`. `intent` is the last successful result and
+ * survives a failed re-derive; `status`/`error`/usage describe the latest attempt.
+ */
+export const PrIntentState = z.object({
+  pr_id: z.string(),
+  status: PrIntentStatus,
+  error: z.string().nullable(),
+  stale: z.boolean(),
+  stale_reason: PrIntentStaleReason.nullable(),
+  intent: PrIntentRecord.nullable(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  requested_at: z.string().nullable(),
+  finished_at: z.string().nullable(),
+});
+export type PrIntentState = z.infer<typeof PrIntentState>;
 
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;

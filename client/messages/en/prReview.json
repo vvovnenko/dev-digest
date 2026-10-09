@@ -186,5 +186,8 @@
   },
   "overview": {
     "description": "Description"
+  },
+  "scope": {
+    "outOfScope": "out of scope"
   }
 }

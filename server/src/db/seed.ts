@@ -422,6 +422,8 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     }
   }
 
+  await seedDemoIntent(db, workspaceId, pr!.id);
+
   return { workspaceId, userId };
 }
 
@@ -647,6 +649,47 @@ const CONTRACT_PR_FILES: ReadonlyArray<{ path: string; patch: readonly string[] 
     ],
   },
 ];
+
+/**
+ * PR #482's derived intent, so its Overview card has something to show before the first derive.
+ * Outside the `if (!pr)` block on purpose: a database seeded before this existed gets it too, and a
+ * reseed never touches a row that exists (a derive the user ran, a failed re-derive). `input_hash`
+ * stays NULL — the seed cannot import the intent module's hash — so only a new head marks it stale.
+ */
+async function seedDemoIntent(db: Db, workspaceId: string, prId: string): Promise<void> {
+  const title = 'Add rate limiting to public API endpoints';
+  const description =
+    'Add rate limiting to public API endpoints to prevent abuse from unauthenticated clients.';
+  await db
+    .insert(t.prIntent)
+    .values({
+      prId,
+      workspaceId,
+      status: 'done',
+      intent:
+        'Rate-limit the public /api/public/* endpoints so unauthenticated clients cannot abuse them: requests over the limit get a 429 with a Retry-After header.',
+      inScope: [
+        'Rate limiter middleware (src/middleware/ratelimit.ts)',
+        'Applying the limiter to the public webhook endpoints',
+        'Rate limit settings in src/config.ts',
+      ],
+      outOfScope: ['Changes to authentication', 'New API endpoints', 'Logging changes'],
+      confidence: 'medium',
+      sources: [
+        { kind: 'title', ref: 'title', status: 'used', reason: null, chars: title.length },
+        { kind: 'description', ref: 'description', status: 'used', reason: null, chars: description.length },
+        { kind: 'files', ref: 'files', status: 'used', reason: null, chars: 220 },
+      ],
+      missingContext: [],
+      headSha: 'a1b2c3d4e5f6',
+      inputHash: null,
+      provider: 'openrouter',
+      model: 'openai/gpt-5.4-nano',
+      derivedAt: new Date(),
+      finishedAt: new Date(),
+    })
+    .onConflictDoNothing();
+}
 
 // CLI entrypoint
 if (import.meta.url === `file://${process.argv[1]}`) {

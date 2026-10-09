@@ -128,6 +128,10 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** File texts by path for getFileText; a path not listed is missing (null). */
+  files?: Record<string, string>;
+  /** Issues by number for getIssue: an `IssueMeta` is returned, an `Error` is thrown; any other number is a 404. */
+  issues?: Record<number, IssueMeta | Error>;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -257,7 +261,14 @@ export class MockGitHubClient implements GitHubClient {
   }
 
   async getIssue(_repo: RepoRef, n: number): Promise<IssueMeta> {
-    return { number: n, title: `Issue #${n}`, body: 'mock issue', state: 'open' };
+    const issue = this.opts.issues?.[n];
+    if (issue instanceof Error) throw issue;
+    if (!issue) throw Object.assign(new Error(`Issue #${n} not found`), { status: 404 });
+    return issue;
+  }
+
+  async getFileText(_repo: RepoRef, path: string, _ref: string): Promise<string | null> {
+    return this.opts.files?.[path] ?? null;
   }
 
   async currentLogin(): Promise<string> {

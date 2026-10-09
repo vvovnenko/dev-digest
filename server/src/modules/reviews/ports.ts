@@ -2,6 +2,7 @@ import type {
   Finding,
   LLMProvider,
   Provider,
+  ReviewIntentContext,
   RunEvent,
   RunEventKind,
   RunSummary,
@@ -110,6 +111,19 @@ export interface ReviewQueue {
   readonly concurrency: number;
 }
 
+/**
+ * The Intent Layer, as a review run uses it (the intent service, structurally): the PR's intent
+ * for the prompt. It never throws; `intent` is null when there is none, `body` is the description
+ * to review with (read from GitHub for a PR that had none).
+ */
+export interface IntentProvider {
+  forReview(
+    workspaceId: string,
+    pull: ReviewPull,
+    ctx: { diff: UnifiedDiff; log: { info(msg: string, data?: unknown): void } },
+  ): Promise<{ intent: ReviewIntentContext | null; body: string | null }>;
+}
+
 export interface ReviewDeps {
   store: ReviewStore;
   queue: ReviewQueue;
@@ -119,4 +133,8 @@ export interface ReviewDeps {
   repoContext: RepoContext;
   /** Resolves a provider's client; throws when its key isn't configured. */
   llm: (provider: Provider) => Promise<LLMProvider>;
+  /** The PR's derived intent for the prompt. */
+  intent: IntentProvider;
+  /** Whether a run prepares the PR's intent first (`DEVDIGEST_INTENT_ON_REVIEW`). */
+  intentOnReview: boolean;
 }

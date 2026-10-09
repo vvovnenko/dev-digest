@@ -192,14 +192,12 @@ export interface SafeFetchOptions {
   maxRedirects?: number;
   dnsLookup?: DnsLookup;
   request?: HttpsRequest;
+  /** The `user-agent` the target sees (default `DevDigest-SkillImport/1.0`). */
+  userAgent?: string;
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-const HEADERS = {
-  accept: 'text/markdown, text/plain, application/zip, */*;q=0.5',
-  'accept-encoding': 'identity',
-  'user-agent': 'DevDigest-SkillImport/1.0',
-};
+const DEFAULT_USER_AGENT = 'DevDigest-SkillImport/1.0';
 
 type Hop = { location: string } | { bytes: Uint8Array; contentType: string | null };
 
@@ -208,8 +206,14 @@ export class SafeHttpsFetcher implements UrlFetcher {
   private readonly maxRedirects: number;
   private readonly lookup: LookupFunction;
   private readonly request: HttpsRequest;
+  private readonly headers: Record<string, string>;
 
   constructor(opts: SafeFetchOptions = {}) {
+    this.headers = {
+      accept: 'text/markdown, text/plain, application/zip, */*;q=0.5',
+      'accept-encoding': 'identity',
+      'user-agent': opts.userAgent ?? DEFAULT_USER_AGENT,
+    };
     this.timeoutMs = opts.timeoutMs ?? 10_000;
     this.maxRedirects = opts.maxRedirects ?? 3;
     this.lookup = guardedLookup(opts.dnsLookup ?? dns.lookup);
@@ -285,7 +289,7 @@ export class SafeHttpsFetcher implements UrlFetcher {
             port: 443,
             path: `${url.pathname}${url.search}`,
             method: 'GET',
-            headers: HEADERS,
+            headers: this.headers,
             agent: false,
             lookup: this.lookup,
             signal,

@@ -11,6 +11,7 @@ export const prKeys = {
   reviews: (prId: string) => ["pr", prId, "reviews"] as const,
   runs: (prId: string) => ["pr", prId, "runs"] as const,
   comments: (prId: string) => ["pr", prId, "comments"] as const,
+  intent: (prId: string) => ["pr", prId, "intent"] as const,
 };
 
 export const runKeys = {

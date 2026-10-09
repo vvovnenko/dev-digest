@@ -13,3 +13,5 @@ Files:
 
 - [`2026-10-08-review-test-doc-agents.md`](2026-10-08-review-test-doc-agents.md) — test-writer-ui /
   test-writer-backend, architecture-reviewer, plan-verifier, doc-writer subagents (done 2026-10-08).
+- [`2026-10-09-intent-layer.md`](2026-10-09-intent-layer.md) — L03 Intent Layer: PR intent classifier,
+  review-prompt injection and out-of-scope filter, Overview card (approved 2026-10-09).

@@ -7,11 +7,51 @@ import { z } from 'zod';
 
 // ---- Intent ----
 export const Intent = z.object({
-  intent: z.string(),
+  summary: z.string(),
   in_scope: z.array(z.string()),
   out_of_scope: z.array(z.string()),
 });
 export type Intent = z.infer<typeof Intent>;
+
+/** How sure the system is of a derived intent. The code caps it; the model can only lower it. */
+export const IntentConfidence = z.enum(['high', 'medium', 'low']);
+export type IntentConfidence = z.infer<typeof IntentConfidence>;
+
+/** What a derived intent was read from: always the first three, plus each linked document. */
+export const IntentSourceKind = z.enum([
+  'title',
+  'description',
+  'files',
+  'issue',
+  'pull',
+  'repo_file',
+  'url',
+  'ticket',
+]);
+export type IntentSourceKind = z.infer<typeof IntentSourceKind>;
+
+export const IntentSourceStatus = z.enum(['used', 'unavailable', 'truncated', 'skipped']);
+export type IntentSourceStatus = z.infer<typeof IntentSourceStatus>;
+
+/** One input of a derived intent. `ref` is sanitized; `reason` is a code, never an error text. */
+export const IntentSource = z.object({
+  kind: IntentSourceKind,
+  ref: z.string(),
+  status: IntentSourceStatus,
+  reason: z.string().nullable(),
+  chars: z.number().int(),
+});
+export type IntentSource = z.infer<typeof IntentSource>;
+
+/**
+ * An Intent as the review engine receives it: the derived scope plus how much
+ * to trust it. `stale` = the PR changed after the intent was derived.
+ */
+export const ReviewIntentContext = Intent.extend({
+  confidence: IntentConfidence,
+  stale: z.boolean(),
+});
+export type ReviewIntentContext = z.infer<typeof ReviewIntentContext>;
 
 // ---- Blast radius ----
 export const ChangedSymbol = z.object({

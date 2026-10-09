@@ -13,6 +13,7 @@ import {
   AgentVersion,
   ConventionsState,
   PrDetail,
+  PrIntentState,
   PrMeta,
   Repo,
   ReviewRecord,
@@ -118,6 +119,21 @@ d('API responses match the shared contracts (Testcontainers pg)', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(Skill.parse(res.json())).toMatchObject({ name: 'contract-url', source: 'imported_url' });
+  });
+
+  it("PR #482's seeded intent", async () => {
+    const [repo] = await read('/repos', z.array(Repo));
+    const pr = (await read(`/repos/${repo!.id}/pulls`, z.array(PrMeta))).find((p) => p.number === 482)!;
+    const state = await read(`/pulls/${pr.id}/intent`, PrIntentState);
+    expect(state).toMatchObject({
+      pr_id: pr.id,
+      status: 'done',
+      stale: false,
+      intent: { confidence: 'medium', head_sha: 'a1b2c3d4e5f6' },
+    });
+    expect(state.intent!.summary).toMatch(/rate-limit/i);
+    expect(state.intent!.out_of_scope.length).toBeGreaterThan(0);
+    expect(state.intent!.sources.map((s) => s.kind)).toEqual(['title', 'description', 'files']);
   });
 
   it("a repo's conventions (no scan yet)", async () => {
