@@ -1,4 +1,4 @@
-import type { ChatMessage, PromptAssembly, PromptSkillBlock } from '@devdigest/shared';
+import type { ChatMessage, PromptAssembly, PromptSkillBlock, ReviewIntentContext } from '@devdigest/shared';
 
 /**
  * Prompt assembly + prompt-injection hardening.
@@ -45,6 +45,45 @@ const MAX_PR_DESCRIPTION_CHARS = 4000;
 
 /** GitHub caps titles at 256 chars; anything longer didn't come from GitHub. */
 const MAX_PR_TITLE_CHARS = 256;
+
+/** Bounds on a derived intent in the prompt: the model that wrote it is not trusted to be brief. */
+const MAX_INTENT_SUMMARY_CHARS = 500;
+const MAX_INTENT_ITEMS = 8;
+const MAX_INTENT_ITEM_CHARS = 200;
+
+function intentList(items: readonly string[]): string {
+  const kept = items
+    .map((i) => i.trim().slice(0, MAX_INTENT_ITEM_CHARS))
+    .filter((i) => i.length > 0)
+    .slice(0, MAX_INTENT_ITEMS);
+  return kept.length > 0 ? kept.map((i) => `- ${i}`).join('\n') : '- (none)';
+}
+
+/**
+ * The `## PR intent` section. The derived summary and lists are model output built from
+ * author-controlled text, so they sit inside one untrusted block; the instruction and the
+ * confidence / staleness lines are ours and stay outside it.
+ */
+export function renderIntentSection(intent: ReviewIntentContext): string {
+  const lines = [
+    `Derived intent of this PR (confidence: ${intent.confidence}). Set \`out_of_scope: true\` on a finding only when it is about code outside this intent. ` +
+      'Still report every real defect with its true severity: scope never lowers a severity or removes a finding.',
+  ];
+  if (intent.stale) {
+    lines.push('The PR changed after this intent was derived, so it may be outdated; flag scope with extra care.');
+  }
+  if (intent.confidence === 'low') {
+    lines.push(
+      'This intent was derived from indirect data (title, branch, changed files), not from a description or linked document.',
+    );
+  }
+  const body = [
+    `Summary: ${intent.summary.trim().slice(0, MAX_INTENT_SUMMARY_CHARS)}`,
+    `In scope:\n${intentList(intent.in_scope)}`,
+    `Out of scope:\n${intentList(intent.out_of_scope)}`,
+  ].join('\n');
+  return `## PR intent\n${lines.join('\n')}\n${wrapUntrusted('pr-intent', body)}`;
+}
 
 /**
  * One enabled skill, already resolved by the caller (DB in the studio, fs in a runner).
@@ -135,6 +174,11 @@ export interface PromptParts {
    * `task`, which is trusted text.
    */
   pr?: { title: string; author: string } | undefined;
+  /**
+   * The PR's derived intent (summary + scope lists, untrusted model output) and how far to
+   * trust it. Rendered as `## PR intent` right after the description. Undefined → section omitted.
+   */
+  intent?: ReviewIntentContext | undefined;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482". Trusted: no PR text in it. */
@@ -180,6 +224,8 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   if (prDescription) {
     userSections.push(`## PR description\n${wrapUntrusted('pr-description', prDescription)}`);
   }
+  const intentSection = parts.intent ? renderIntentSection(parts.intent) : undefined;
+  if (intentSection) userSections.push(intentSection);
   if (skillsBlock) userSections.push(`## Skills / rules\n${skillsBlock}`);
   if (memoryBlock) userSections.push(`## Relevant memory\n${memoryBlock}`);
   if (parts.repoMap && parts.repoMap.trim().length > 0) {
@@ -209,6 +255,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: intentSection ?? null,
     user,
   };
 

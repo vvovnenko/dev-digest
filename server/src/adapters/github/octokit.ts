@@ -478,6 +478,29 @@ export class OctokitGitHubClient implements GitHubClient {
     };
   }
 
+  async getFileText(repo: RepoRef, path: string, ref: string): Promise<string | null> {
+    try {
+      const res = await withRetry(() =>
+        withTimeout(
+          this.octokit.rest.repos.getContent({
+            owner: repo.owner,
+            repo: repo.name,
+            path,
+            ref,
+            mediaType: { format: 'raw' },
+          }),
+          TIMEOUT,
+        ),
+      );
+      // A directory comes back as a listing, not text; a binary file carries NUL bytes.
+      const data: unknown = res.data;
+      return typeof data === 'string' && !data.includes('\0') ? data : null;
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) return null;
+      throw err;
+    }
+  }
+
   async currentLogin(): Promise<string> {
     const res = await withRetry(() =>
       withTimeout(this.octokit.rest.users.getAuthenticated(), TIMEOUT),

@@ -17,6 +17,7 @@ export {
   wrapUntrusted,
   estimateTokens,
   renderSkill,
+  renderIntentSection,
   skillBlocks,
   type PromptParts,
   type PromptSkill,
@@ -30,6 +31,9 @@ export {
   type GroundingResult,
   type GroundingOptions,
 } from './grounding.js';
+
+// Intent scope — the deterministic out-of-scope filter applied after grounding.
+export { applyIntentScope, type ScopeMode, type ScopeResult } from './scope.js';
 
 // Structured-output helpers (Zod → JSON Schema + parse-with-repair).
 export {

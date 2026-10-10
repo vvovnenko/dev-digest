@@ -61,10 +61,10 @@ ToastProvider → RepoProvider`. The `QueryClient` is created once, in `useState
 
 ## Hooks, query keys, invalidation
 
-All hooks live in `src/lib/hooks/*.ts`, re-exported by `src/lib/hooks/index.ts:4-10`. Pull-request, run,
-PR-list and skill keys come from the factories in `src/lib/hooks/keys.ts:8-47`: a key starts with the resource
+All hooks live in `src/lib/hooks/*.ts`, re-exported by `src/lib/hooks/index.ts:4-11`. Pull-request, run,
+PR-list and skill keys come from the factories in `src/lib/hooks/keys.ts:8-48`: a key starts with the resource
 and holds every `queryFn` input, so invalidating a prefix refreshes everything under it (`prKeys.all(prId)` =
-the PR's detail, reviews, runs and comments; `skillKeys.all` = every skill list, detail, version history and
+the PR's detail, reviews, runs, comments and intent; `skillKeys.all` = every skill list, detail, version history and
 usage list). An agent's skill links sit under the agent's own `["agent", id]` prefix
 (`agentSkillKeys.links`). The other keys are inline arrays. `["context", repoId]`
 (`core.ts:168-182`) and `["repo-intel-state"]` have hooks but no screen yet.
@@ -87,6 +87,7 @@ usage list). An agent's skill links sit under the agent's own `["agent", id]` pr
 | `prKeys.runs(prId)` | `usePrRuns` → `GET /pulls/:id/runs` (`reviews.ts:27-35`) | every 4 s while a run is `running` | run review, delete run and a finished run via `prKeys.all` (`reviews.ts:133,67,54`); cancel (`reviews.ts:76`) |
 | `prKeys.reviews(prId)` | `usePrReviews` → `GET /pulls/:id/reviews` (`reviews.ts:38-44`) | — | finding action, optimistic (`reviews.ts:168-183`); delete review (`reviews.ts:85`); `prKeys.all` invalidations |
 | `prKeys.comments(prId)` | `usePrComments` → `GET /pulls/:id/comments` (`reviews.ts:91-97`) | — | `useCreatePrComment` (`reviews.ts:113`) |
+| `prKeys.intent(prId)` | `usePrIntent` → `GET /pulls/:id/intent` (`intent.ts:19-26`) | every 2 s while the latest attempt is `queued`/`running` (`intent.ts:24`, `isIntentActive` in `src/lib/intent.ts:9-11`) | `useDeriveIntent` → `POST /pulls/:id/intent` (202) sets data, which starts the polling (`intent.ts:33-39`); `prKeys.all` invalidations, so a finished run refreshes it (`reviews.ts:54`) |
 | `runKeys.trace(runId)` | `useRunTrace` → `GET /runs/:id/trace` (`trace.ts:13-20`) | no retry | a finished run, all traces (`reviews.ts:55`) |
 | `conventionKeys.state(repoId)` | `useConventions` → `GET /repos/:id/conventions` (`conventions.ts:29-36`) | every 2 s while `latest_scan` is `queued`/`running` (`conventions.ts:34`) | `useExtractConventions` → `POST …/extract` (202) sets data, which starts the polling (`conventions.ts:47`); `useUpdateConvention` → `PUT /conventions/:id`, optimistic (a reject drops the card), rolled back on error, refetched once the last of several quick edits settles (`conventions.ts:81-109`); `useDeselectAllConventions`, optimistic (`conventions.ts:112-135`) |
 | `conventionKeys.skillDraft(repoId)` | `useConventionSkillDraft` → `GET /repos/:id/conventions/skill-draft` (`conventions.ts:142-151`) | never cached (`staleTime`/`gcTime` 0), no retry | — |

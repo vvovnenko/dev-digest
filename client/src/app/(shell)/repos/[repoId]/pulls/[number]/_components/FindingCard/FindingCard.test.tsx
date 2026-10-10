@@ -61,6 +61,23 @@ describe("FindingCard (smoke, both themes)", () => {
     expect(onAction).toHaveBeenCalledWith("dismiss");
   });
 
+  it("shows the out-of-scope badge only for a finding marked out_of_scope", () => {
+    const { rerender } = renderWithIntl(<FindingCard f={FINDING} />);
+    expect(screen.queryByText("out of scope")).not.toBeInTheDocument();
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <FindingCard f={{ ...FINDING, out_of_scope: false }} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.queryByText("out of scope")).not.toBeInTheDocument();
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <FindingCard f={{ ...FINDING, out_of_scope: true }} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText("out of scope")).toBeInTheDocument();
+  });
+
   it("the chevron button expands and collapses the card from the keyboard", async () => {
     const user = userEvent.setup();
     renderWithIntl(<FindingCard f={FINDING} />);

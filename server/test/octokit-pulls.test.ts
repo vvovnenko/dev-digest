@@ -138,3 +138,43 @@ describe('OctokitGitHubClient.getDiffStats', () => {
     expect(warnings[0]!.obj).toMatchObject({ repo: 'acme/app', prs: 100 });
   });
 });
+
+describe('OctokitGitHubClient.getFileText', () => {
+  const REPO = { owner: 'acme', name: 'app' };
+  const withContent = (get: (params: Record<string, unknown>) => Promise<{ data: unknown }>) =>
+    new OctokitGitHubClient('t', {
+      octokit: { rest: { repos: { getContent: get } } } as unknown as Octokit,
+    });
+
+  it('reads the raw text of a path at a ref', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const client = withContent(async (params) => {
+      seen.push(params);
+      return { data: '# Plan' };
+    });
+    expect(await client.getFileText(REPO, 'docs/plan.md', 'abc123')).toBe('# Plan');
+    expect(seen[0]).toMatchObject({
+      owner: 'acme',
+      repo: 'app',
+      path: 'docs/plan.md',
+      ref: 'abc123',
+      mediaType: { format: 'raw' },
+    });
+  });
+
+  it('is null for a missing path (404), a directory listing and a binary file', async () => {
+    const missing = withContent(async () => {
+      throw Object.assign(new Error('Not Found'), { status: 404 });
+    });
+    expect(await missing.getFileText(REPO, 'nope.md', 'abc123')).toBeNull();
+    expect(await withContent(async () => ({ data: [{ name: 'a' }] })).getFileText(REPO, 'docs', 'abc123')).toBeNull();
+    expect(await withContent(async () => ({ data: 'PNG\0data' })).getFileText(REPO, 'a.png', 'abc123')).toBeNull();
+  });
+
+  it('rethrows any other failure', async () => {
+    const forbidden = withContent(async () => {
+      throw Object.assign(new Error('Forbidden'), { status: 403 });
+    });
+    await expect(forbidden.getFileText(REPO, 'docs/plan.md', 'abc123')).rejects.toMatchObject({ status: 403 });
+  });
+});

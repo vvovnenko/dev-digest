@@ -5,12 +5,14 @@ import type {
   LLMUsage,
   PromptAssembly,
   Review,
+  ReviewIntentContext,
   RunEventKind,
   UnifiedDiff,
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt, type PromptSkill } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
+import { applyIntentScope } from '../scope.js';
 import {
   DiffTooLargeError,
   LlmCallError,
@@ -91,6 +93,11 @@ export interface ReviewInput {
   prDescription?: string;
   /** PR title + author (untrusted; rendered in their own wrapped block, never in `task`). */
   pr?: { title: string; author: string };
+  /**
+   * The PR's derived intent. Rendered as `## PR intent`; the model flags findings outside it
+   * and `applyIntentScope` drops them (or only tags them when the intent is stale or low).
+   */
+  intent?: ReviewIntentContext;
   /** Task framing line, e.g. "Review PR #482". Trusted: no PR text in it. */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -181,6 +188,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     repoMap: input.repoMap,
     prDescription: input.prDescription,
     pr: input.pr,
+    intent: input.intent,
     task: input.task,
   };
 
@@ -258,17 +266,29 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score AND verdict are derived from the findings that SURVIVED grounding (not
+  // Intent scope: after grounding, before verdict and score, so a dropped finding counts for neither.
+  const scope = applyIntentScope(ground.kept, input.intent);
+  for (const d of scope.dropped) {
+    emit('info', `scope dropped "${d.finding.title}": ${d.reason}`);
+  }
+  if (scope.mode !== 'none') {
+    emit(
+      'result',
+      `Intent scope (${scope.mode}): ${scope.kept.filter((f) => f.out_of_scope).length} out-of-scope kept, ${scope.dropped.length} dropped`,
+    );
+  }
+
+  // Score AND verdict are derived from the findings that SURVIVED grounding and scope (not
   // the model's self-reported values, and not the pre-grounding set) so the score,
   // the verdict, the findings list and the GitHub event always agree.
-  const verdict = verdictFromFindings(ground.kept, input.failOn ?? 'critical');
+  const verdict = verdictFromFindings(scope.kept, input.failOn ?? 'critical');
   if (verdict !== merged.verdict) {
     emit('info', `verdict ${merged.verdict} → ${verdict} (derived from the grounded findings)`);
   }
   return {
-    review: { ...merged, verdict, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: { ...merged, verdict, findings: scope.kept, score: scoreFromFindings(scope.kept) },
     grounding,
-    dropped: ground.dropped,
+    dropped: [...ground.dropped, ...scope.dropped],
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),

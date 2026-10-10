@@ -7,7 +7,7 @@ description: "Create Mermaid diagrams in markdown. Use when the user wants to vi
 
 Generate Mermaid diagrams embedded in markdown that **communicate clearly** — showing relationships, flows, and structure that words alone can't express.
 
-See `examples.md` for ready-to-use templates for each diagram type. See `references.md` for official docs and tools.
+See `examples.md` for ready-to-use templates for each diagram type, and [mermaid.js.org](https://mermaid.js.org/intro/) for the full syntax.
 
 ---
 
@@ -16,7 +16,7 @@ See `examples.md` for ready-to-use templates for each diagram type. See `referen
 - **Diagrams should clarify, not decorate** — every element must serve a purpose
 - **Text-first** — Mermaid is text-based, version-controllable, and diff-friendly
 - **Right diagram for the job** — pick the type that matches the concept (see Decision Guide)
-- **Validate before sharing** — test in [Mermaid Live Editor](https://mermaid.live/) or render locally with `mmdc`
+- **Validate before sharing** — test in [Mermaid Live Editor](https://mermaid.live/) or render locally with `mmdc`; with neither, check by reading (see Validation)
 
 ---
 
@@ -35,6 +35,9 @@ See `examples.md` for ready-to-use templates for each diagram type. See `referen
 | Git branching strategy | **Git Graph** | `gitGraph` |
 | User experience steps | **User Journey** | `journey` |
 | Chronological events | **Timeline** | `timeline` |
+| System context or containers (a C4 level) | **Flowchart** with a subgraph per system or container | `flowchart LR` |
+
+Mermaid's own C4 syntax (`C4Context`) is experimental — draw a C4 level as a flowchart.
 
 ---
 
@@ -230,12 +233,14 @@ class nodeId className
 - **Use subgraphs** — group related nodes to reduce visual complexity
 - **Keep nodes concise** — short labels, no paragraphs in boxes
 - **Use consistent naming** — camelCase for IDs, readable text for labels
-- **Validate syntax** — test in [Mermaid Live Editor](https://mermaid.live/) before committing
+- **Name code by its real name** — a node or participant that stands for a file, component, function, route or table uses the name from the code, so a reader can find it
+- **One level of detail per diagram** — modules or functions, a system or its code, never both in one picture
+- **Validate syntax** — test in [Mermaid Live Editor](https://mermaid.live/) before committing, or run the Validation checks by reading
 - **Wrap in markdown** — use triple-backtick `mermaid` code blocks
 
 ### Don't
 
-- **Don't exceed ~20 nodes** per diagram — split into multiple diagrams instead
+- **Don't exceed ~20 nodes** per diagram — first draw at a coarser level (one node per module or layer); if it is still too big, split by aspect (the flow, its data model) rather than cutting one flow into pieces
 - **Don't use flowcharts for everything** — sequence diagrams are better for API flows
 - **Don't mix directions** — stick to one direction per flowchart (LR or TD)
 - **Don't hardcode colors** unless necessary — let the theme handle consistency
@@ -274,7 +279,17 @@ mmdc -i diagram.md -o diagram.png -w 1200
 ### Validation
 
 Before sharing any diagram:
-1. Check syntax in [Mermaid Live Editor](https://mermaid.live/)
+1. Check syntax in [Mermaid Live Editor](https://mermaid.live/) or render it with `mmdc`
 2. Verify all arrows connect to valid node IDs
 3. Ensure labels are readable at the rendered size
 4. Test with the intended theme (light/dark)
+
+#### Without a renderer
+
+With no web access and no `mmdc` — and when you may not install one — check by reading. These catch most of what a render would:
+
+- The block is fenced as `mermaid`, and its first line is the diagram keyword (`flowchart LR`, `sequenceDiagram`, …)
+- Every arrow and message joins a declared node ID or participant
+- **Flowchart:** quote a label or edge text that contains brackets of any kind, `;` or `<br/>`, or starts with `/` — `A["routes.ts (S4)"]`, `-->|"GET /skills/:id"|`. Quoting is always safe, so quote when unsure; write a `"` inside as `#quot;`
+- **Flowchart:** no node ID is lowercase `end` (write `End`), and links have spaces around them — `A---oB` draws a circle edge, not a link to `oB`
+- **Sequence:** no `;` or `#` in a message — `;` ends the statement and `#` starts a comment, so the text is cut; write `#59;` / `#35;`

@@ -16,12 +16,12 @@ Citations are `path:line`, relative to `e2e/`.
 | ---- | ----- | ----- | ---- |
 | repo | `acme/payments-api`, the only repo | 01, 02, 04, 05 | `../server/src/db/seed.ts:89-107` |
 | PR | #482 "Add rate limiting to public API endpoints", head `a1b2c3d4e5f6`, no `last_reviewed_sha` | 02, 04, 05 | `../server/src/db/seed.ts:110-133` |
-| `pr_files` | 4 rows, one of them `src/config.ts`, the only one with a patch (4 added lines) | 05, 09 | `../server/src/db/seed.ts:136-141,433-445` |
+| `pr_files` | 4 rows, one of them `src/config.ts`, the only one with a patch (4 added lines) | 05, 09 | `../server/src/db/seed.ts:136-141,435-447` |
 | `pr_commits` | 1 commit | — | `../server/src/db/seed.ts:144-149` |
 | review | `request_changes`, score 61, `model: 'seed'`, no agent, no run | 04 | `../server/src/db/seed.ts:152-164` |
 | findings | CRITICAL "Hardcoded Stripe secret key in commit", WARNING "N+1 query in user list endpoint" | 04 | `../server/src/db/seed.ts:166-191` |
 | PR | #483 "Add partial refunds", head `b7c8d9e0f1a2`, 2 `pr_files` with patches (`src/refunds.ts`, `test/refunds.test.ts`), no review — the L02 skills control experiment | — | `../server/src/db/seed.ts:194-240` |
-| PR | #484 "Harden refund validation and support disputed charges", head `d5e6f7a8b9c0`, 4 `pr_files` with change patches (`src/api/public/refunds.ts`, `src/api/public/charges.ts`, `package.json`, `CHANGELOG.md`), no review — the HW2 API Contract control experiment | — | `../server/src/db/seed.ts:242-285,562-649` |
+| PR | #484 "Harden refund validation and support disputed charges", head `d5e6f7a8b9c0`, 4 `pr_files` with change patches (`src/api/public/refunds.ts`, `src/api/public/charges.ts`, `package.json`, `CHANGELOG.md`), no review — the HW2 API Contract control experiment | — | `../server/src/db/seed.ts:242-285,564-651` |
 | agents | General, Security, Performance, Test Quality and API Contract Reviewer | 03, 08, 09 | `../server/src/db/seed.ts:287-359` |
 | skills | `branch-coverage` (rubric), `edge-case-checklist` (rubric), `mocking-discipline` (convention), plus `api-breaking-change`, `api-response-schema` (rubric), `api-semver-discipline`, `api-deprecation-policy` (convention), each at v1 with a `skill_versions` row | 08 | `../server/src/db/seed.ts:361-405`, `../server/src/db/seed-skills.ts:20,53,88,123,134,206,271,337,397` |
 | `agent_skills` | the three Test Quality skills linked to Test Quality Reviewer and the four API contract skills to API Contract Reviewer, each in that order, all enabled — only in the seed run that creates that agent | 08 | `../server/src/db/seed.ts:407-422` |
@@ -31,7 +31,7 @@ Citations are `path:line`, relative to `e2e/`.
   (`../server/src/modules/pulls/domain.ts:128-134`, `:11-14,53-55`).
   The list defaults to `?status=needs_review` (`../client/src/app/(shell)/repos/[repoId]/pulls/_components/PullsListView/PullsListView.tsx:35`,
   `../client/src/app/(shell)/repos/[repoId]/pulls/constants.ts:57`).
-- **No `agent_runs` rows** (`../server/src/db/seed.ts:47-426`), so the accordion header
+- **No `agent_runs` rows** (`../server/src/db/seed.ts:47-428`), so the accordion header
   reads `Agent` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:68`,
   `../client/messages/en/prReview.json:160`).
 - **Review and findings are written only with a new PR #482** (`../server/src/db/seed.ts:115`):
@@ -158,9 +158,9 @@ Then `open /agents`, `wait --url /agents`, `networkidle`, and:
 
 The one flow that writes, so it sorts last. It needs the API's fake LLM
 (`DEVDIGEST_FAKE_LLM=1`, `../scripts/e2e.sh:47-49`, `../.github/workflows/e2e-web.yml:7-9`):
-`../server/src/platform/container.ts:259` hands every agent a `FakeReviewLlm`, which answers
+`../server/src/platform/container.ts:289` hands every agent a `FakeReviewLlm`, which answers
 with one WARNING titled "Fake finding on the first added line" on the first added line of
-the prompt's diff (`../server/src/adapters/llm/fake.ts:17-18,21,45`). With no clone the diff
+the prompt's diff (`../server/src/adapters/llm/fake.ts:17-18,30,54`). With no clone the diff
 comes from the stored patches (`../server/src/adapters/git/pr-diff.ts:19-29`), so the seed's one
 patch is what makes the review possible; without it every run fails with "The diff has no
 reviewable text" (`../reviewer-core/src/llm/errors.ts:30`).
@@ -179,9 +179,9 @@ vain. Then the path to `/pulls/482?tab=findings` as in 04, and:
 - `wait --text "Fake finding on the first added line"`: a finished run's card; the grounding
   gate kept it, since the line is in the patch's hunk.
 - `find role button click --name Accept`: the first expanded card's Accept
-  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:110,112`, `../client/messages/en/prReview.json:6`) →
+  (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:111,113`, `../client/messages/en/prReview.json:6`) →
   `POST /findings/:id/accept`, applied optimistically (`../client/src/lib/hooks/reviews.ts:158-181`).
-- `wait --text "accepted"`: the card's tag (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:64`,
+- `wait --text "accepted"`: the card's tag (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:65`,
   `../client/messages/en/prReview.json:3`).
 - `find role button click --name "Open run trace & logs"`: the Timeline icon button's
   `aria-label` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.tsx:229-230`, `../client/messages/en/prReview.json:125`);
@@ -217,7 +217,7 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 | Run Review · Run all enabled agents | 09 | messages `../client/messages/en/prReview.json:52,49` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.tsx:87,65`) |
 | Review in progress | 09 | message `../client/messages/en/prReview.json:148` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:96`) |
 | Fake finding on the first added line | 09 | `FAKE_FINDING_TITLE`, `../server/src/adapters/llm/fake.ts:17` |
-| Accept · accepted | 09 | messages `../client/messages/en/prReview.json:6,3` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:112,64`) |
+| Accept · accepted | 09 | messages `../client/messages/en/prReview.json:6,3` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/FindingCard/FindingCard.tsx:113,65`) |
 | Open run trace & logs (`aria-label`) | 09 | message `../client/messages/en/prReview.json:125` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.tsx:230`) |
 | Prompt assembly | 09 | message `../client/messages/en/runs.json:22` (`../client/src/app/(shell)/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.tsx:76`) |
 | API Keys · Feature Models | 07 | messages `../client/messages/en/settings.json:6,24` + vendored `../client/src/vendor/ui/nav.ts:47-48` |
@@ -230,9 +230,9 @@ leaves the default `needs_review` list (see **Rules for new flows**).
 - **No model calls.** 09 runs reviews only because the API answers with the fake LLM; a real
   one would bill a key. The seeded agents run on OpenRouter (`../server/src/db/seed.ts:15-16`),
   and a finished run stores the head SHA as `last_reviewed_sha`
-  (`../server/src/modules/reviews/run-executor.ts:301-303`,
+  (`../server/src/modules/reviews/run-executor.ts:324-326`,
   `../server/src/modules/reviews/repository/run.repo.ts:219`,
-  `../server/src/modules/reviews/repository/pull.repo.ts:40-45`). #482 then reads
+  `../server/src/modules/reviews/repository/pull.repo.ts:39-44`). #482 then reads
   `reviewed` or `stale` (`../server/src/modules/pulls/domain.ts:55-58`) and leaves the default
   `?status=needs_review` list, which breaks 02, 04 and 05.
 - **Deterministic locators only**: `--url`, `--text`, `find role|text|label`, never

@@ -1,5 +1,18 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, index, check } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  boolean,
+  numeric,
+  index,
+  check,
+} from 'drizzle-orm/pg-core';
+import type { IntentSource } from '@devdigest/shared';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -53,6 +66,8 @@ export const findings = pgTable(
     confidence: doublePrecision('confidence').notNull(),
     kind: text('kind').notNull().default('finding'),
     trifectaComponents: jsonb('trifecta_components').$type<string[]>(),
+    /** The reviewer flagged it as outside the PR intent (kept when tag-only or the one CRITICAL signal). */
+    outOfScope: boolean('out_of_scope').notNull().default(false),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
   },
@@ -63,14 +78,48 @@ export const findings = pgTable(
   }),
 );
 
-export const prIntent = pgTable('pr_intent', {
-  prId: uuid('pr_id')
-    .primaryKey()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  intent: text('intent').notNull(),
-  inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-});
+/**
+ * One row per PR. The result columns (`intent` … `derivedAt`) belong to the last
+ * successful derive; `status`, `error`, `jobId`, the model, usage and the two
+ * request/finish times belong to the latest attempt. A failed re-derive keeps the result.
+ */
+export const prIntent = pgTable(
+  'pr_intent',
+  {
+    prId: uuid('pr_id')
+      .primaryKey()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** The intent summary; null until a derive succeeds. */
+    intent: text('intent'),
+    inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    status: text('status', { enum: ['queued', 'running', 'done', 'failed'] }).notNull().default('done'),
+    error: text('error'),
+    /** The `jobs` row that runs it (no FK: jobs are operational rows). */
+    jobId: uuid('job_id'),
+    confidence: text('confidence', { enum: ['high', 'medium', 'low'] }),
+    sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
+    missingContext: jsonb('missing_context').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    headSha: text('head_sha'),
+    /** sha256 of the normalized title + description at derive time; null = never compared. */
+    inputHash: text('input_hash'),
+    provider: text('provider'),
+    model: text('model'),
+    tokensIn: integer('tokens_in'),
+    tokensOut: integer('tokens_out'),
+    costUsd: numeric('cost_usd', { mode: 'number' }),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    derivedAt: timestamp('derived_at', { withTimezone: true }),
+  },
+  (t) => ({
+    statusCk: check('pr_intent_status_ck', sql`${t.status} in ('queued', 'running', 'done', 'failed')`),
+    confidenceCk: check('pr_intent_confidence_ck', sql`${t.confidence} in ('high', 'medium', 'low')`),
+  }),
+);
 
 export const prBrief = pgTable('pr_brief', {
   prId: uuid('pr_id')

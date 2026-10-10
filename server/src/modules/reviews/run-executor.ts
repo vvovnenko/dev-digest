@@ -1,4 +1,12 @@
-import type { LLMUsage, PromptSkillBlock, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type {
+  LLMUsage,
+  PromptSkillBlock,
+  Provider,
+  Review,
+  ReviewIntentContext,
+  RunTrace,
+  UnifiedDiff,
+} from '@devdigest/shared';
 import { reviewPullRequest, countBlockers, skillBlocks, usageOf } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import type { FindingRecord, ReviewAgent, ReviewPull, ReviewRecord, ReviewRepoRef } from './domain.js';
@@ -27,6 +35,9 @@ export type Logger = {
   error: (obj: unknown, msg?: string) => void;
   debug: (obj: unknown, msg?: string) => void;
 };
+
+/** What the shared pre-work hands every agent run of a request. */
+type PrepWork = { intent: ReviewIntentContext | null; body: string | null };
 
 // A reduced "Review per file" — same schema as Review (the model returns a small
 // Review per file; we merge findings + take the worst verdict / mean score).
@@ -100,6 +111,15 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // The PR's intent for the prompt. Not fatal: a review does not depend on it, and the service
+    // never throws — a PR that has none gets one derived here, the agents then share it.
+    let prep: PrepWork = { intent: null, body: pull.body };
+    if (this.deps.intentOnReview) {
+      prep = await runLog
+        .step('Preparing PR intent', () => this.deps.intent.forReview(workspaceId, pull, { diff, log: runLog }))
+        .catch(() => prep);
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -107,7 +127,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, prep, agent, runId, runLog);
         logger?.info(
           {
             runId,
@@ -136,6 +156,7 @@ export class ReviewRunExecutor {
     pull: ReviewPull,
     repo: ReviewRepoRef,
     diff: UnifiedDiff,
+    prep: PrepWork,
     agent: ReviewAgent,
     runId: string,
     parentLog: RunLogger,
@@ -220,7 +241,9 @@ export class ReviewRunExecutor {
         ...(skills.length > 0 ? { skills } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
-        ...(pull.body ? { prDescription: pull.body } : {}),
+        ...(prep.body ? { prDescription: prep.body } : {}),
+        // The derived intent; the engine flags and filters findings outside it. Omitted when there is none.
+        ...(prep.intent ? { intent: prep.intent } : {}),
         // Title/author are author-controlled too: wrapped, never in `task`.
         pr: { title: pull.title, author: pull.author },
         task,

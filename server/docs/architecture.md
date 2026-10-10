@@ -13,10 +13,10 @@ has the conventions. The review run is specified in
    no auth (`:42`). An `unhandledRejection` handler logs instead of letting Node exit (`:11-13`).
    SIGTERM/SIGINT run `app.close()` once (`:18-39`); if it has not finished after
    2 × `SHUTDOWN_GRACE_MS` (20 s), the process exits with 1 (`:26-31`, `src/app.ts:41`).
-2. `loadConfig` (`src/platform/config.ts:87-113`) imports `dotenv/config` (`:1`) and
-   zod-parses env (`:15-54`). API keys are **not** in `AppConfig` (`:9-13`). The
+2. `loadConfig` (`src/platform/config.ts:92-119`) imports `dotenv/config` (`:1`) and
+   zod-parses env (`:15-57`). API keys are **not** in `AppConfig` (`:9-13`). The
    secrets path defaults to `~/.devdigest/secrets.json`; `DEVDIGEST_SECRETS_PATH` overrides it
-   (the test config does) (`:101-103`).
+   (the test config does) (`:106-108`).
 3. `buildApp` (`src/app.ts:63-270`), in this order:
    - DB via `createDb` unless `opts.db` is passed (`:64-66`); Fastify with a 1 MiB
      `bodyLimit`, a 30 s `requestTimeout` — the time a client gets to send its whole request,
@@ -42,8 +42,8 @@ has the conventions. The review run is specified in
      The global rate limit (120/min; a hit is a 429 `rate_limited`) is **not registered**
      under `NODE_ENV=test` (`:169-181`), so per-route `config.rateLimit` caps do nothing in
      tests. The reads the UI polls opt out with `config.rateLimit: false`: the SSE stream,
-     `/pulls/:id/runs/active`, `/pulls/:id/runs` (`src/modules/reviews/routes.ts:63`,
-     `:158`, `:165`) and `/repos/:id/index-state` (`src/modules/repo-intel/routes.ts:35`).
+     `/pulls/:id/runs/active`, `/pulls/:id/runs` (`src/modules/reviews/routes.ts:65`,
+     `:160`, `:167`) and `/repos/:id/index-state` (`src/modules/repo-intel/routes.ts:35`).
    - `/health` and `/health/ready` (`src/app.ts:183-205`): the latter is a 503 with
      `reason: 'db_unreachable'` when the DB ping fails, and a 503 with
      `reason: 'migrations_pending'` and the count when the DB has applied fewer migrations
@@ -53,7 +53,7 @@ has the conventions. The review run is specified in
      an `onClose` that closes the pool only if `buildApp` created it (`:267`).
 
 The reaper runs on **every** `buildApp`, tests included. The server's vitest config points
-`DATABASE_URL` at an unreachable port (`vitest.config.ts:29`), so an app built without a
+`DATABASE_URL` at an unreachable port (`vitest.config.ts:31`), so an app built without a
 `db` (`test/routes-smoke.test.ts:15`) never reaches the dev DB — its reaper only logs a
 warning. A second app built while a run of the first is in flight marks that run
 `failed`; the first app's final write only lands on a `running` row, so the run stays
@@ -64,44 +64,48 @@ job row has no such guard: the first app's JobRunner writes its final status ove
 
 One per app, and the composition root: it builds the adapters and repositories. Each
 module's `routes.ts` builds its service once from them, as a `deps` object of that module's
-ports (e.g. `src/modules/reviews/routes.ts:24-32`). Only repo-intel's service still takes
+ports (e.g. `src/modules/reviews/routes.ts:24-34`). Only repo-intel's service still takes
 the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-not-touch.
 
 | Member | Built | Override |
 | ------ | ----- | -------- |
 | `config`, `db` | passed in by `buildApp` | `buildApp({ config, db })` |
-| `secrets` | eager: `LocalSecretsProvider(config.secretsPath)` (`:99`) | `secrets` |
-| `auth` | eager: `LocalNoAuthProvider(workspaceRepo, { email, workspaceName })` with the seeded identity (`:100-102`) | `auth` |
-| `runBus` | eager: `new RunBus()`, one per app (`:103-104`) | `runBus` |
-| `jobs` | eager: `new JobRunner(db)` (`:105`) | — |
-| `git`, `codeIndex` | lazy getters (`:108-112`, `:158-162`) | `git`, `codeIndex` |
-| `agentsRepo`, `skillsRepo`, `reviewRepo`, `pullsRepo`, `settingsRepo`, `workspaceRepo`, `reposRepo` | lazy getters (`:114-132`, `:142-144`; `skillsRepo` `:131-133`) | — |
-| `prDiffs` | lazy: `PrDiffSource` over `git` and the stored `pr_files` patches (`:134-140`) | through `git` |
-| `repoIndexing` | a fresh object per access whose `index`/`refresh` enqueue repo-intel's `INDEX_JOB_KIND`/`REFRESH_JOB_KIND`, so the repos module never names them (`:146-156`) | — |
-| `repoIntel`, `depgraph`, `tokenizer` | lazy getters (`:164-187`) | same names |
-| `priceBook` | lazy; lists OpenRouter models if a key exists, else `[]` (`:189-206`) | — |
-| `github()` | async, cached; `ConfigError` without `GITHUB_TOKEN` (`:208-215`) | `github` |
-| `llm(id)` | async, cached **per id** (`:217-226`) | `llm[id]` |
-| `checkCredentials(provider, key?)` | async; tries a candidate key on a fresh, uncached client, else the stored key (`:254-267`) | `github`, `llm[id]` |
-| `embedder()` | async; `ConfigError` unless `EMBEDDINGS_ENABLED=true` (`:269-282`) | `embedder` |
+| `secrets` | eager: `LocalSecretsProvider(config.secretsPath)` (`:124`) | `secrets` |
+| `auth` | eager: `LocalNoAuthProvider(workspaceRepo, { email, workspaceName })` with the seeded identity (`:125-127`) | `auth` |
+| `runBus` | eager: `new RunBus()`, one per app (`:128-129`) | `runBus` |
+| `jobs` | eager: `new JobRunner(db)` (`:130`) | — |
+| `git`, `codeIndex` | lazy getters (`:134-138`, `:222-226`) | `git`, `codeIndex` |
+| `agentsRepo`, `skillsRepo`, `reviewRepo`, `pullsRepo`, `settingsRepo`, `workspaceRepo`, `reposRepo` | lazy getters (`:140-162`, `:172-174`; `skillsRepo` `:144-146`) | — |
+| `prDiffs` | lazy: `PrDiffSource` over `git` and the stored `pr_files` patches (`:164-170`) | through `git` |
+| `intentRepo` | lazy getter (`:180-182`) | — |
+| `intentService` | lazy: the Intent Layer's `IntentService`, built here from ports — `intentRepo`, `pullsRepo`, `prDiffs`, `intentUrlFetcher`, `jobs`, `github()`, `llm(id)`, `featureModel(ws, 'review_intent')` and a logger over `app.log` (`:184-203`) | — |
+| `intentUrlFetcher` | lazy: a `SafeHttpsFetcher` with User-Agent `DevDigest-Intent/1.0`, or `overrides.urlFetcher` when a test sets one (`:366-372`) | `urlFetcher` |
+| `repoIndexing` | a fresh object per access whose `index`/`refresh` enqueue repo-intel's `INDEX_JOB_KIND`/`REFRESH_JOB_KIND`, so the repos module never names them (`:210-220`) | — |
+| `repoIntel`, `depgraph`, `tokenizer` | lazy getters (`:228-251`) | same names |
+| `priceBook` | lazy; lists OpenRouter models if a key exists, else `[]` (`:253-272`) | — |
+| `github()` | async, cached; `ConfigError` without `GITHUB_TOKEN` (`:274-281`) | `github` |
+| `llm(id)` | async, cached **per id** (`:283-292`) | `llm[id]` |
+| `checkCredentials(provider, key?)` | async; tries a candidate key on a fresh, uncached client, else the stored key (`:318-331`) | `github`, `llm[id]` |
+| `embedder()` | async; `ConfigError` unless `EMBEDDINGS_ENABLED=true` (`:333-346`) | `embedder` |
 
 - `llm('openai' | 'anthropic')` builds `src/adapters/llm/openai.ts` / `anthropic.ts`.
   `llm('openrouter')` builds reviewer-core's `OpenRouterProvider`. Each gets
-  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:272,280,285`, in `buildLlm`, `:265-286`);
+  `priceBook.estimatorFor(id)` as its cost estimator (`src/platform/container.ts:302,310,315`, in `buildLlm`, `:294-316`);
   OpenAI/Anthropic return tokens only, so their models are priced under the catalog alias (`src/platform/price-book.ts:17-22`).
   The container imports it from the `@devdigest/reviewer-core/llm/openrouter.js` subpath
-  (`:26`): the package index does not export it, and `pnpm arch` allows that import here only.
+  (`:28`): the package index does not export it, and `pnpm arch` allows that import here only.
 - With `DEVDIGEST_FAKE_LLM=1` (`config.fakeLlm`) every agent gets `FakeReviewLlm` instead
-  (`:240`, `src/adapters/llm/fake.ts:45`): one WARNING on the diff's first added line, no key,
-  no network. It is for the e2e review flow; `loadConfig` refuses it under
-  `NODE_ENV=production` (`src/platform/config.ts:89-91`).
-- The overridable set is `ContainerOverrides` (`:52-68`). You cannot override
+  (`:289`, `src/adapters/llm/fake.ts:54`): one WARNING on the diff's first added line, no key,
+  no network; asked for the intent schema instead, it answers a fixed intent
+  (`src/adapters/llm/fake.ts:20-27,81-96`). It is for the e2e review flow; `loadConfig` refuses it under
+  `NODE_ENV=production` (`src/platform/config.ts:94-96`).
+- The overridable set is `ContainerOverrides` (`:60-78`). You cannot override
   `priceBook`, the repositories, `prDiffs`, `repoIndexing` or `jobs`. Getters check the override
-  before the cache, so an override always wins (`:122`, `:226`, `:236-237`, `:291`).
-- `runBus` is one per app, so closing one app never ends another app's streams (`:115-116`).
+  before the cache, so an override always wins (`:135`, `:275`, `:285-286`, `:362`).
+- `runBus` is one per app, so closing one app never ends another app's streams (`:128-129`).
   Tests pass their own bus through `overrides.runBus` (`test/run-lifecycle.it.test.ts:168-179`).
 - `invalidateSecretCaches()` drops the cached LLM clients, the GitHub client and the
-  embedder (`src/platform/container.ts:322-326`). Its only caller is `SettingsService.testConnection`, right
+  embedder (`src/platform/container.ts:352-356`). Its only caller is `SettingsService.testConnection`, right
   after it saves a key that passed the test (`src/modules/settings/service.ts:57-60`).
 - A service's dependencies are its module's ports: `AgentDeps`, `SkillsDeps`, `RepoDeps` (with the
   `RepoIndexing` port), `PullsDeps`, `PollingDeps`, `SettingsDeps`, `WorkspaceDeps` and
@@ -110,11 +114,24 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
   `src/modules/repos/ports.ts:40-57`,
   `src/modules/pulls/ports.ts:22`, `src/modules/polling/ports.ts:20`,
   `src/modules/settings/ports.ts:15`, `src/modules/workspace/ports.ts:13`,
-  `src/modules/reviews/ports.ts:113`). The container's repositories and adapters satisfy
+  `src/modules/reviews/ports.ts:127`). The container's repositories and adapters satisfy
   them structurally; secrets-backed adapters go in as functions
   (`github: () => container.github()`), so a missing key still surfaces on first use.
   Tests pass in-memory fakes (`test/repos-service.test.ts`, `test/pulls-service.test.ts`,
   `test/settings-service.test.ts`).
+- **A service two modules need is built in the container, from ports, and the second module gets
+  it through its own port.** The Intent Layer is used by its own routes and by the reviews module,
+  which derives an intent when a PR has none, and a module may not import another. So
+  `container.intentService` builds one `IntentService` from the intent module's ports plus the
+  container's repositories and adapters (`src/platform/container.ts:188-203`). `intent/routes.ts`
+  takes that instance as it is (`src/modules/intent/routes.ts:21`); `reviews/routes.ts` passes it as
+  `deps.intent` (`src/modules/reviews/routes.ts:32`), typed there by reviews' own narrow port
+  `IntentProvider`, which has `forReview` only (`src/modules/reviews/ports.ts:114-126`). The service
+  satisfies the port structurally, so neither module imports the other. One instance also means one
+  `pr-intent` job-handler registration (`src/modules/intent/routes.ts:26`). A route reads the
+  getter once and calls the service, never a method on a container member, so the ratchet stays
+  put (`test/routes-container-ratchet.test.ts:17-39`). Its model comes from
+  `featureModel(ws, 'review_intent')` (`src/platform/container.ts:205-208`), the Settings → Models pick, else the registry default.
 - Most adapter interfaces come from `@devdigest/shared` (`src/platform/container.ts:1-12`, `src/vendor/shared/adapters.ts:10-12`).
   Exceptions: `DepGraph` and `Tokenizer` live in their adapter files
   (`src/adapters/depgraph/index.ts:27`, `src/adapters/tokenizer/index.ts:16`), and
@@ -130,29 +147,30 @@ the whole container (`src/modules/repo-intel/routes.ts:29`); repo-intel is do-no
     a mismatch (`:91-97`). A `{}` fixture is how tests produce a failed run
     (`test/reviews.it.test.ts:301-303`). Every call reports 100/50 tokens and $0.001
     (`:78-86`, `:96-104`). `structuredBySchema` picks a fixture per `schemaName` (`:53`, `:91`).
-  - `MockGitClient` returns a default one-file diff (`:281-286`); `MockGitHubClient`
-    records what it posts (`:130-135`). `MockSecretsProvider` has no `set()` (`:325-330`),
+  - `MockGitClient` returns a default one-file diff (`:321-326`); `MockGitHubClient`
+    records what it posts (`:137-141`) and serves the files and issues a test lists
+    (`options.files`, `options.issues`, `getFileText`; `:131-134`, `:264-272`). `MockSecretsProvider` has no `set()` (`:365-370`),
     so saving a key returns "Secrets backend is read-only" (`src/modules/settings/service.ts:46`).
 - Anything you do not override is the real adapter, but no test can reach a real key or
   the dev DB: the vitest config blanks every provider key and `GITHUB_TOKEN`, and points
   `DEVDIGEST_SECRETS_PATH` at a throwaway file and `DATABASE_URL` at an unreachable port
-  (`vitest.config.ts:18-30`); `dotenv` never overrides a variable that is already set.
+  (`vitest.config.ts:18-32`); `dotenv` never overrides a variable that is already set.
   `appWith` also overrides `secrets` and `openrouter` (`test/reviews.it.test.ts:126-130`),
   because "run all enabled agents reviews with each enabled agent"
   (`test/reviews.it.test.ts:602-611`) runs the seeded OpenRouter agents
-  (`src/db/seed.ts:15`, `src/platform/container.ts:280`).
+  (`src/db/seed.ts:15`, `src/platform/container.ts:310`).
 
 ## Modules and request context
 
-- The registry is static: `settings, repos, pulls, polling, workspace, agents, skills, reviews,
-  repoIntel` (`src/modules/index.ts:27-38`); `:16-19` says why there is no autoload.
+- The registry is static: `settings, repos, pulls, polling, workspace, agents, skills, conventions,
+  intent, reviews, repoIntel` (`src/modules/index.ts:28-40`); `:18-21` says why there is no autoload.
   `@fastify/autoload` is still a dependency (`package.json:22`) that nothing imports.
 - Each module is a plain async plugin registered with `await` (`src/app.ts:262-264`), so
-  it is encapsulated and inherits `app.container` and the root error handler. Eight of
-  the nine call `withTypeProvider<ZodTypeProvider>()` (e.g. `src/modules/reviews/routes.ts:22`).
+  it is encapsulated and inherits `app.container` and the root error handler. Ten of
+  the eleven call `withTypeProvider<ZodTypeProvider>()` (e.g. `src/modules/reviews/routes.ts:22`).
   `workspace` declares no schema at all (`src/modules/workspace/routes.ts:12`).
 - Job handlers are registered when their module registers (`src/modules/repos/routes.ts:32`,
-  `src/modules/repo-intel/routes.ts:30`). The main GET routes (repos, the PR list and detail,
+  `src/modules/repo-intel/routes.ts:30`, and `pr-intent` in `src/modules/intent/routes.ts:26`). The main GET routes (repos, the PR list and detail,
   runs, reviews, a trace, agents, settings) declare a `response` schema from `@devdigest/shared`;
   a reply that fails it takes the response-serialization branch, a logged 500
   (`src/app.ts:224-229`; test `test/error-envelope.test.ts:36-37,54-55`).
@@ -190,7 +208,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
 - A 500's raw message never reaches the client: it can carry SQL, a constraint name or a
   file path. Tests: `test/error-envelope.test.ts:48-80`.
 - Every route validates its body by schema, `POST /pulls/:id/review` included (`RunRequest`,
-  whose `agentId` must be a uuid; `src/modules/reviews/routes.ts:40`), so a bad body is a 422
+  whose `agentId` must be a uuid; `src/modules/reviews/routes.ts:42`), so a bad body is a 422
   (`test/error-envelope.test.ts:82-88`).
 - Statuses that are easy to miss: `invalid_repo_url` is a 422 (`src/modules/repos/helpers.ts:29`);
   an enqueue after shutdown began is a 503 `shutting_down` (`src/platform/jobs.ts:96`).
@@ -211,7 +229,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   check passes; a failed check keeps the old key and says `— the key was not saved`
   (`src/modules/settings/service.ts:44-62`; tests `test/settings-service.test.ts:48-72`).
 - A missing key makes the container getters throw `ConfigError`, which is a 500 `config_error`
-  (`src/platform/container.ts:248`, `:271`, `:279`, `:283`). Inside a review it fails the run instead.
+  (`src/platform/container.ts:278`, `:301`, `:309`, `:313`). Inside a review it fails the run instead.
 
 ## JobRunner (`src/platform/jobs.ts`)
 
@@ -242,7 +260,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
   (`test/integration.it.test.ts:196`), which also waits for jobs queued behind their repo (`src/platform/jobs.ts:199-202`).
 - **Reviews do not use it.** They are fire-and-forget into their own queue: `container.reviewQueue`, a
   p-queue that runs `REVIEW_CONCURRENCY` review requests at once (default 2) while the rest wait
-  (`src/platform/container.ts:85`, `src/modules/reviews/service.ts:130-143`); see
+  (`src/platform/container.ts:88`, `src/modules/reviews/service.ts:130-143`); see
   [`../specs/review-flow.md`](../specs/review-flow.md).
 
 ## Writes that must stay consistent
@@ -302,7 +320,7 @@ Classes are in `src/platform/errors.ts`. Every mapped body is `{ error: { code, 
    There is no `src/adapters/index.ts` barrel: the container imports the file.
    When one module is the only user, skip the shared interface: declare the port in that
    module's `ports.ts` and let the adapter class match it structurally, with no import
-   between them — `DiffSource` (`src/modules/reviews/ports.ts:87`) ↔ `PrDiffSource`
+   between them — `DiffSource` (`src/modules/reviews/ports.ts:88`) ↔ `PrDiffSource`
    (`src/adapters/git/pr-diff.ts:12`), `SkillFileFetcher` (`src/modules/skills/ports.ts`) ↔
    `SafeHttpsFetcher` (`src/adapters/http/safe-fetch.ts`).
 2. A private field and a lazy getter in the container. Make it async if it needs a secret,

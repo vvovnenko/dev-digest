@@ -46,6 +46,9 @@ import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 import { SafeHttpsFetcher, type UrlFetcher } from '../adapters/http/safe-fetch.js';
+import { IntentRepository } from '../modules/intent/repository.js';
+import { IntentService } from '../modules/intent/service.js';
+import { INTENT_USER_AGENT } from '../modules/intent/constants.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -101,6 +104,8 @@ export class Container {
   private _workspaceRepo?: WorkspaceRepository;
   private _reposRepo?: RepoRepository;
   private _conventionsRepo?: ConventionsRepository;
+  private _intentRepo?: IntentRepository;
+  private _intentService?: IntentService;
   private _prDiffs?: PrDiffSource;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
@@ -112,7 +117,7 @@ export class Container {
     db: Db,
     private overrides: ContainerOverrides = {},
     /** The app's logger, for adapters that report a degraded path (`app.log`). */
-    private log?: AdapterLog,
+    private log?: AdapterLog & { info?(obj: unknown, msg?: string): void },
   ) {
     this.config = config;
     this.db = db;
@@ -170,6 +175,31 @@ export class Container {
 
   get conventionsRepo(): ConventionsRepository {
     return (this._conventionsRepo ??= new ConventionsRepository(this.db));
+  }
+
+  get intentRepo(): IntentRepository {
+    return (this._intentRepo ??= new IntentRepository(this.db));
+  }
+
+  /**
+   * The Intent Layer, built once from ports: the intent module's routes and the reviews module
+   * share it, so there is one job-handler registration and no module imports another.
+   */
+  get intentService(): IntentService {
+    return (this._intentService ??= new IntentService({
+      store: this.intentRepo,
+      pulls: this.pullsRepo,
+      diffs: this.prDiffs,
+      fetcher: this.intentUrlFetcher,
+      jobs: this.jobs,
+      github: () => this.github(),
+      llm: (provider) => this.llm(provider),
+      model: (workspaceId) => this.featureModel(workspaceId, 'review_intent'),
+      log: {
+        info: (obj, msg) => this.log?.info?.(obj, msg),
+        warn: (obj, msg) => this.log?.warn(obj, msg),
+      },
+    }));
   }
 
   /** The provider + model a system LLM feature runs on: the workspace's Settings choice, else the registry default. */
@@ -331,5 +361,13 @@ export class Container {
   get urlFetcher(): UrlFetcher {
     if (this.overrides.urlFetcher) return this.overrides.urlFetcher;
     return (this._urlFetcher ??= new SafeHttpsFetcher());
+  }
+
+  private _intentUrlFetcher?: UrlFetcher;
+
+  /** Fetches the documents a PR links, with the intent layer's own User-Agent; the same guard as `urlFetcher`. */
+  get intentUrlFetcher(): UrlFetcher {
+    if (this.overrides.urlFetcher) return this.overrides.urlFetcher;
+    return (this._intentUrlFetcher ??= new SafeHttpsFetcher({ userAgent: INTENT_USER_AGENT }));
   }
 }

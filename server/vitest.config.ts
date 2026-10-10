@@ -25,6 +25,8 @@ export default defineConfig({
       OPENROUTER_API_KEY: '',
       GITHUB_TOKEN: '',
       GITHUB_PAT: '',
+      // The reviews tests count LLM calls: the intent pre-work (its own model call) is switched on per test.
+      DEVDIGEST_INTENT_ON_REVIEW: 'false',
       DEVDIGEST_SECRETS_PATH: path.join(mkdtempSync(path.join(tmpdir(), 'devdigest-test-')), 'secrets.json'),
       DATABASE_URL: 'postgres://devdigest:devdigest@127.0.0.1:1/unreachable',
     },

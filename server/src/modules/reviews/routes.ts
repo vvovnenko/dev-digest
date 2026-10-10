@@ -29,6 +29,8 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     diffs: container.prDiffs,
     repoContext: container.repoIntel,
     llm: (provider) => container.llm(provider),
+    intent: container.intentService,
+    intentOnReview: container.config.intentOnReview,
   });
 
   // ---- Run a review (manual trigger) -------------------------------

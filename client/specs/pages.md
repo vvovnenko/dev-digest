@@ -87,10 +87,23 @@ Conventions (`/repos/:repoId/conventions`, `nav.ts:33`); Settings at the bottom.
   yet — create one" (`:53`); "Configure agents…" → `/agents` (`:73`). A pick sends `POST /pulls/:id/review`
   (`src/lib/hooks/reviews.ts:125-135`, which refreshes the PR's runs and reviews) and switches to
   `tab=findings` (`PrDetailView.tsx:88`).
-- Overview: only "Description", the PR body as plain text, nothing when empty (`PR/OverviewTab/OverviewTab.tsx:16-21`).
+- Overview: the **Intent** card (below), then "Description", the PR body as plain text, nothing when empty
+  (`PR/OverviewTab/OverviewTab.tsx:21-32`; `PrDetailView.tsx:92` passes the PR's id).
   Files changed: "Files changed · N files" + `DiffViewer` (`PR/DiffTab/DiffTab.tsx:58-60`); GitHub review
   comments via `GET`/`POST /pulls/:id/comments` (`reviews.ts:91-115`), hidden until "Show comments (N)"
   (`DiffTab.tsx:23,46-55`); posting only on open PRs (`PrDetailView.tsx:109`).
+- **Intent card** (`PR/IntentCard/IntentCard.tsx`, spec: [`06-intent-layer.md`](./06-intent-layer.md)): the
+  section label **Intent** (`messages/en/brief.json:3`) over a card. `usePrIntent` → `GET /pulls/:id/intent`,
+  polled every 2 s while the attempt is `queued`/`running`; **Derive intent** and ↻ **Re-derive intent** →
+  `useDeriveIntent` → `POST /pulls/:id/intent` (`src/lib/hooks/intent.ts:19-39`). States: a skeleton while
+  loading (`IntentCard.tsx:57-64`); "No intent derived yet." with **Derive intent** (`:66-80`); "Deriving…"
+  with the previous intent still shown (`:104-110`); the summary as plain text, **In scope** / **Out of
+  scope** columns and a **High / Medium / Low confidence** badge (`:123-133`, `:92-96`); for `low` the hint
+  "Derived from title and changed files — add a description or link a spec for a sharper intent" (`:134`);
+  linked sources, an unavailable one as "{ref} — unavailable ({reason})", and "Missing: …" (`:135-151`);
+  "Deriving the intent failed." (`:111-116`); a stale banner naming the reason (`:117-122`). The copy is
+  `messages/en/brief.json:19-41`. No e2e flow asserts it. A finding the reviewer flagged as outside the
+  intent carries an **out of scope** tag on its card (see the finding card below).
 
 ### `/agents`
 - `AgentsListView` (`src/app/(shell)/agents/page.tsx:12-14`). `useAgents` → `GET /agents`, oldest first (`../server/src/modules/agents/repository.ts:36-43`); card
@@ -260,9 +273,10 @@ line, author, time; `:130-159`), newest first (`:118-125`):
   - filter buttons **Critical / Warning / Suggestion**, one at a time, second click clears (`FindingsPanel.tsx:48-51,90-103`);
     "Hide low confidence" hides < 0.65 (`:104-107`, `FindingsPanel/constants.ts:12`); none left → "No findings match" (`:111-112`);
   - cards sorted by severity, the first expanded (`FindingsPanel/helpers.ts:5-16`, `FindingsPanel.tsx:114-125`).
-- finding card (`PR/FindingCard/FindingCard.tsx`): severity, title, category, `accepted` / `rejected` tag
-  (`:64-65`), `file:line` linked to GitHub (`:68-70`), confidence, an expand button (`:75-86`); expanded:
-  rationale, "Suggested fix", **Accept** / **Reject** (`:103-123`). A click changes the card at once and rolls
+- finding card (`PR/FindingCard/FindingCard.tsx`): severity, title, category, an **out of scope** tag when the
+  finding has `out_of_scope` (`:64`, `prReview.json:191`; see Overview), `accepted` / `rejected` tag
+  (`:65-66`), `file:line` linked to GitHub (`:69-71`), confidence, an expand button (`:76-87`); expanded:
+  rationale, "Suggested fix", **Accept** / **Reject** (`:104-124`). A click changes the card at once and rolls
   back if the server refuses; only that card's buttons wait (`reviews.ts:158-194`, `FindingsPanel.tsx:120`).
   Reject is copy only; it posts `/findings/:id/dismiss` (`reviews.ts:163-167`, `prReview.json:6-7`).
   `j`/`k`/`a`/`d` act on the focused card of one run only — the last one opened (`FindingsPanel.tsx:54-69`,
