@@ -88,13 +88,15 @@ gets the starting `git status` paths that belong to other work, so it leaves the
   decisions, the branch.
 - **Output:** `# Development Plan` — Status (READY / NEEDS INPUT), §1 Context
   read (rules, *INSIGHTS applied*, specs, *Skills read*), §2 Decisions, §3
-  Contracts & data (API table, Data model table, Migration), §4 Steps (files,
+  Contracts & data (*Flow* — a Mermaid diagram of how the layers interact, or
+  `none — one layer`; API table, Data model table, Migration), §4 Steps (files,
   skills, hard rules, insights, tests, `Test mode:`, `Verify:`), §5 Skill map, §6 Final
   verification, §7 Out of scope / Unchanged, §8 Open questions · Research
   needed, §9 Review hand-off. Or `## Clarification needed`.
 - **Decides:** scope, placement of every file, the API contract, the data model
   (tables, columns, types, constraints, indexes, migration effect),
-  transactions, client data flow, step order, what to test.
+  transactions, client data flow, how the layers interact, step order, what to
+  test.
   **Leaves to the implementer:** code, Drizzle / Zod / Fastify syntax, names,
   styles, test code.
 - **Permissions:** `Read, Grep, Glob, Bash`; denies `Write, Edit,
@@ -102,8 +104,9 @@ gets the starting `git status` paths that belong to other work, so it leaves the
   *Research needed*.
 - **Skills:** preloads `onion-architecture`, `frontend-ui-architecture`,
   `engineering-insights`; must Read `postgresql-table-design` for any schema
-  change and `security` for a new endpoint or untrusted input; reads
-  `next-best-practices` when needed.
+  change, `security` for a new endpoint or untrusted input, and
+  `mermaid-diagram` whenever the plan draws a diagram (not preloaded: plans
+  inside one layer don't need it); reads `next-best-practices` when needed.
 - **Reads:** package `CLAUDE.md`, the full `INSIGHTS.md` of every module in
   scope (it is the implementer's filter), the spec with Amendments,
   `.claude/skills/pr-self-review/routing.json`, the hard-rule catalog in
@@ -261,6 +264,7 @@ External, checked against the raw pages on 2026-10-08:
 | Package rules, do-not-touch paths, test commands | both | root and package `CLAUDE.md`, `TESTING.md` |
 | Skill routing, `suppress` notes, hard rules | planner `## 3`, implementer `## 2` | `.claude/skills/pr-self-review/routing.json`, `references/severity.md` |
 | Language rule stated at the top and bottom; Sonnet needs mandatory steps as concrete actions | both: opening lines, *Rules for every …* | root `INSIGHTS.md`, entries of 2026-10-08 |
+| A diagram when the plan crosses layers; its type follows the content; a required `Flow:` line, even when it is `none` | planner `## 5`, plan §3 *Flow* | S22, S23 (below); `mermaid-diagram` skill; root `INSIGHTS.md` 2026-10-08 (a required check fills a report field) |
 
 ## Sources behind the test, verifier, review and doc agents
 
@@ -333,6 +337,11 @@ the plan [`docs/plans/2026-10-08-review-test-doc-agents.md`](../../docs/plans/20
   session sees a new agent type only after a delay (15–30 min observed).
 - **A new skill** needs a `routing.json` entry; add it to an agent's `skills:`
   only if that agent needs it in every task — the Read-fallback covers the rest.
+- **Diagram rules live in the `mermaid-diagram` skill** — type, size, level of
+  detail, naming and the checks by reading when nothing renders (*Validation →
+  Without a renderer*). `planner` and `doc-writer` keep only when and where to
+  draw; change the skill, not the agents (`implementer` and `/pr-self-review`
+  read it too).
 - **`test-writer-ui` and `test-writer-backend` share `## 1.` and everything from
   `## 3.` on, verbatim** — change both, then check that
   `diff <(sed -n '/^## 3\./,$p' test-writer-ui.md) <(sed -n '/^## 3\./,$p' test-writer-backend.md)`

@@ -132,14 +132,11 @@ package and say so near the top (`server/docs/architecture.md:7`); a new doc doe
 ## 5. Diagrams
 
 Draw one only where it says more than the text; of the C4 levels, only those that add
-value. Type by content: **sequence** — the order of calls between parts; **ER** — tables
-and relations; **state** — a lifecycle (a run's status); **flowchart** — branching
-logic, a pipeline, or one C4 level (C4 syntax in Mermaid is experimental: draw C4 as a
-flowchart with subgraphs, like `README.md` → Architecture). One level of detail per
-diagram; node and participant names come from the code. Put each in a fenced code block
-whose info string is `mermaid`, following the preloaded `mermaid-diagram` skill. Nothing
-here renders Mermaid: check by reading that every edge joins declared IDs and labels
-with brackets, quotes or `<br/>` are quoted.
+value. The preloaded `mermaid-diagram` skill owns the rest: the type for the content
+(Diagram Type Decision Guide, C4 included), size, level of detail and naming (Best
+Practices). In these docs a run's status is a state diagram, and a C4 level is a
+flowchart with subgraphs like `README.md` → Architecture. Nothing here renders Mermaid:
+run the skill's *Validation → Without a renderer* checks on every diagram you write.
 
 ## 6. Index and citations
 
