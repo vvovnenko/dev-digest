@@ -106,6 +106,71 @@ Every `IntentStore` method but the boot reaper filters by `workspace_id`
 a failed attempt), `provider`, `model`, `tokens_in`, `tokens_out`, `cost_usd`, `requested_at`,
 `finished_at`. `error` is the failed attempt's message (`helpers.ts:7-44`, `service.ts:250`).
 
+### Flow: from import to review
+
+```mermaid
+sequenceDiagram
+    participant UI as IntentCard (client)
+    participant Poll as polling
+    participant Exec as ReviewRunExecutor
+    participant Svc as IntentService
+    participant Jobs as JobRunner
+    participant Core as reviewer-core
+    participant DB as Postgres
+    participant GH as GitHub and URL fetcher
+    participant LLM as review_intent model
+
+    Poll->>DB: upsertFromGitHub — title, branch, head_sha, no body
+    Note over Poll,DB: no intent yet — GET /pulls/:id/intent answers status none
+    opt Manual derive (Derive intent or ↻)
+        UI->>Svc: POST /pulls/:id/intent
+        Svc->>DB: claim a queued attempt (none while one is active)
+        Svc->>Jobs: enqueue pr-intent { workspaceId, prId }
+        Svc-->>UI: 202 PrIntentState
+        par the pr-intent job
+            Jobs->>Svc: runJob → derive
+            Svc->>GH: refresh the description (always), read up to 5 linked documents
+            Svc->>LLM: title, branch, description, file outline, documents
+            LLM-->>Svc: summary, in_scope, out_of_scope, confidence
+            Svc->>DB: store the result with head_sha and input_hash
+        and the card polls
+            loop every 2 s until done or failed
+                UI->>Svc: GET /pulls/:id/intent
+            end
+        end
+    end
+    Exec->>Exec: Loading PR diff
+    opt DEVDIGEST_INTENT_ON_REVIEW is not false
+        Exec->>Svc: forReview(pull, diff)
+        alt a stored result
+            Svc-->>Exec: that intent, stale judged now — no re-derive
+        else an attempt in flight, no result yet
+            Svc-->>Exec: no intent
+        else nothing stored
+            Svc->>DB: claim
+            Svc->>GH: the description only if it is null, linked documents
+            Svc->>LLM: the same call, with the review's diff outline
+            Svc->>DB: store the result
+            Svc-->>Exec: the new intent and the description just read
+        end
+    end
+    loop each agent of the request
+        Exec->>Core: reviewPullRequest — description, intent
+        Core->>Core: PR intent section → agent model → grounding → applyIntentScope → score and verdict
+        Core-->>Exec: kept findings, each with out_of_scope
+        Exec->>DB: store the findings
+    end
+```
+
+- Importing a PR derives nothing. The poll stores each PR with `upsertFromGitHub`
+  (`src/modules/polling/service.ts:29`, `src/modules/pulls/repository.ts:179-219`), and the list
+  payload carries no description. The body is written only when the PR's detail is fetched: on
+  `GET /pulls/:id` (`src/modules/pulls/service.ts:40-52`) or by a derive's refresh
+  (`service.ts:358-374`). A PR nobody has opened therefore reaches pre-work with `body: null`,
+  the one case where pre-work refreshes it (`service.ts:261`).
+- A failure anywhere in pre-work only drops the intent: the review goes on without it
+  (`service.ts:193-196`, `src/modules/reviews/run-executor.ts:117-120`).
+
 ### Sources and limits
 
 A derive reads three inputs every time, then every document the PR links
@@ -148,6 +213,12 @@ that order (`extractReferences`, `domain.ts:336-361`). Nothing there touches the
   (`service.ts:261`).
 - Every linked document reaches the model in its own `<untrusted>` block, the unreadable ones as
   a list in a last block (`prompt.ts:64-75`).
+- Plans and specs count only as links. A path such as `docs/plans/….md` or `server/specs/….md`, or
+  a blob URL of this repo, in the title or description is a `repo_file`: read from the diff when the
+  PR adds it whole, else at the PR's head sha — the version on the PR's branch, not the base
+  (`service.ts:425-431`). A plan the PR adds without linking it shows up only in the outline, as a
+  path with `+N -0`; its text is never read. The classifier is told to base the scope on linked
+  documents first (`prompt.ts:27`).
 
 ### Confidence
 
